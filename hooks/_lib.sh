@@ -1,9 +1,8 @@
 # ai-memory hook helper — find marker file + parse minimal TOML.
 # Sourced by per-agent lifecycle hook scripts. POSIX shell only —
 # no bash-isms, no non-standard deps (no jq, no toml crate). Keep changes
-# byte-trivial because every supported agent (claude-code, codex,
-# cursor, gemini-cli, kimi-code, kiro-cli, antigravity-cli, opencode,
-# omp, pool) sources this same file.
+# byte-trivial because every supported agent (claude-code, opencode)
+# sources this same file.
 
 # Walk up from "$1" toward $HOME (or /) looking for `.ai-memory.toml`.
 # Prints the absolute path of the first marker found, or nothing.
@@ -72,8 +71,8 @@ ai_memory_parse_toml_flag() {
 
 # Whether "$1" (a marker file) declares anything beyond a `[capture]`
 # section: any root-level scope key (workspace/project/project_strategy), or
-# any of the other settings ai_memory_marker_qs / ai_memory_briefing_qs
-# forward (drop_subagent_captures, default_global, [briefing] keys). Mirrors
+# any of the other settings ai_memory_marker_qs
+# forwards (drop_subagent_captures, default_global). Mirrors
 # `declares_more_than_capture` in marker.rs. A marker with any of these is a
 # resolution boundary; only a marker whose only content is `[capture]` (e.g.
 # ignore_paths) is scope/settings-transparent (#668).
@@ -92,8 +91,8 @@ ai_memory_marker_declares_settings() {
 # Like ai_memory_find_marker, but skips a marker that declares nothing beyond
 # `[capture]` (see ai_memory_marker_declares_settings) and continues the walk
 # to the next ancestor. Resolves workspace/project/project_strategy and the
-# other root-level settings ai_memory_marker_qs / ai_memory_briefing_qs
-# forward, so a nested capture-only marker no longer resets them to their
+# other root-level settings ai_memory_marker_qs
+# forwards, so a nested capture-only marker no longer resets them to their
 # fallback (#668). [capture]/ignore_paths itself keeps using
 # ai_memory_find_marker (the nearest marker, unchanged). Boundary logic is
 # duplicated rather than shared with ai_memory_find_marker on purpose: this
@@ -138,9 +137,7 @@ ai_memory_find_settings_marker() {
 # Extract the first cwd-like path from a JSON payload on stdin or in $1.
 # Returns the value or nothing. This is intentionally a tiny shell fallback,
 # not a JSON parser; taking the first match preserves the top-level cwd when
-# tool payloads contain nested `cwd` fields later in the object. Antigravity
-# CLI sends `workspacePaths: ["/repo", ...]` instead of `cwd`; Cursor sends
-# `workspace_roots: ["/repo", ...]`.
+# tool payloads contain nested `cwd` fields later in the object.
 # Undo the JSON string escapes that can appear in a path value: \\ -> \
 # and \/ -> /. Windows payloads carry cwd as "C:\\dev\\proj"; without this
 # the doubled backslashes leak into the query string (#188).
@@ -160,21 +157,6 @@ ai_memory_extract_cwd() {
             return 0
         fi
     fi
-    # Antigravity CLI sends `workspacePaths`, Cursor `workspace_roots`.
-    # Cursor never sends a usable `cwd`: `sessionStart` / `sessionEnd` omit it
-    # and its tool events send `cwd: ""`, so an empty match above must fall
-    # through to here rather than returning the empty string.
-    for key in workspacePaths workspace_roots; do
-        rest=${payload#*\"$key\"}
-        [ "$rest" = "$payload" ] && continue
-        raw=$(printf '%s' "$rest" \
-            | sed -n -E 's/^[[:space:]]*:[[:space:]]*\[[[:space:]]*"([^"]*)".*/\1/p' \
-            | head -n 1)
-        if [ -n "$raw" ]; then
-            ai_memory_json_unescape_path "$raw"
-            return 0
-        fi
-    done
 }
 
 # Extract a harness-native session id from the common hook payload spellings.
@@ -193,39 +175,9 @@ ai_memory_extract_session_id() {
     done
 }
 
-# Antigravity's PreInvocation hook fires before every model call. Only the
-# documented invocationNum=0 boundary represents the startup event that
-# ai-memory maps to SessionStart. Missing or malformed counters fail closed so
-# a repeated invocation cannot consume a next-session handoff.
-ai_memory_antigravity_is_initial_invocation() {
-    payload="${1:-$(cat)}"
-    rest=${payload#*\"invocationNum\"}
-    [ "$rest" != "$payload" ] || return 1
-    value=$(printf '%s' "$rest" \
-        | sed -n -E 's/^[[:space:]]*:[[:space:]]*([0-9]+)[[:space:]]*([,}]).*/\1/p' \
-        | head -n 1)
-    [ "$value" = "0" ]
-}
-
 ai_memory_managed_qs() {
     [ -n "${AI_MEMORY_RUN_ID:-}" ] || return 0
     printf '&managed_run=%s' "$(ai_memory_url_encode "$AI_MEMORY_RUN_ID")"
-}
-
-# Resolve cwd for agents whose native hook payload omits it. Payload wins,
-# then Devin's project env var, then the hook process cwd.
-ai_memory_resolve_cwd() {
-    payload="${1:-$(cat)}"
-    cwd=$(ai_memory_extract_cwd "$payload")
-    if [ -n "$cwd" ]; then
-        printf '%s' "$cwd"
-        return 0
-    fi
-    if [ -n "${DEVIN_PROJECT_DIR:-}" ]; then
-        printf '%s' "$DEVIN_PROJECT_DIR"
-        return 0
-    fi
-    pwd 2>/dev/null || true
 }
 
 # URL-encode the minimal set of characters that have meaning in a query
@@ -342,108 +294,6 @@ ai_memory_marker_qs() {
     printf '%s' "$qs"
 }
 
-# Build `&briefing=<v>[&briefing_budget=<v>]` from the `[briefing]` section
-# of the marker walked up from "$1" (inject_on_session_start + optional
-# max_chars). Prints nothing when cwd is absent or the repo did not opt in.
-# NOT part of ai_memory_marker_qs on purpose: agents that deliver the brief
-# once per session (kimi-code, via the first user prompt — kimi discards
-# SessionStart hook stdout) append this only on the first fetch, so the
-# server does not recompose the brief on every request. The char-budget clamp
-# is decided server-side.
-ai_memory_briefing_qs() {
-    cwd="$1"
-    [ -z "$cwd" ] && return 0
-    # Settings walk (#668): a nested capture-only marker must not shadow an
-    # outer marker's [briefing] opt-in.
-    marker=$(ai_memory_find_settings_marker "$cwd")
-    [ -n "$marker" ] || return 0
-    qs=""
-    briefing=$(ai_memory_parse_toml_flag "$marker" inject_on_session_start)
-    case "$(printf '%s' "$briefing" | tr '[:upper:]' '[:lower:]')" in
-        1|true|yes|on) ;;
-        *) return 0 ;;
-    esac
-    budget=$(ai_memory_parse_toml_flag "$marker" max_chars)
-    qs="&briefing=$(ai_memory_url_encode "$briefing")"
-    [ -n "$budget" ] && qs="${qs}&briefing_budget=$(ai_memory_url_encode "$budget")"
-    printf '%s' "$qs"
-}
-
-# Path of the once-per-session "brief delivered" marker for "$1" (a session
-# id or a caller-built fallback key), sanitized to a safe file name under
-# the shared state dir.
-ai_memory_briefed_file() {
-    key=$(printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_')
-    printf '%s/briefed/%s' "$(ai_memory_state_dir)" "$key"
-}
-
-# Write a once-per-session briefing marker and keep only the 512 newest
-# markers. All marker names are sanitized by ai_memory_briefed_file.
-ai_memory_mark_briefed() {
-    path="$1"
-    [ -n "$path" ] || return 0
-    dir=$(dirname "$path")
-    mkdir -p "$dir" 2>/dev/null || return 0
-    : > "$path" 2>/dev/null || return 0
-    LC_ALL=C ls -1t "$dir" 2>/dev/null \
-        | sed -n '513,$p' \
-        | while IFS= read -r stale; do
-            [ -n "$stale" ] && rm -f "$dir/$stale" 2>/dev/null || true
-        done
-}
-
-# Local bridge state for agents whose hook payloads do not carry a session id.
-# The value is intentionally non-secret; the server hashes non-UUID ids into its
-# typed SessionId domain. `AI_MEMORY_SESSION_ID` may be supplied by advanced
-# launchers to pin an externally managed run id.
-ai_memory_state_dir() {
-    if [ -n "${AI_MEMORY_DATA_DIR:-}" ]; then
-        printf '%s' "$AI_MEMORY_DATA_DIR"
-    elif [ -n "${XDG_DATA_HOME:-}" ]; then
-        printf '%s/ai-memory' "$XDG_DATA_HOME"
-    elif [ -n "${HOME:-}" ]; then
-        printf '%s/.local/share/ai-memory' "$HOME"
-    else
-        printf '.ai-memory'
-    fi
-}
-
-ai_memory_session_id_file() {
-    agent="$1"
-    printf '%s/hook-state/%s-session-id' "$(ai_memory_state_dir)" "$agent"
-}
-
-ai_memory_new_session_id() {
-    agent="$1"
-    now=$(date +%s 2>/dev/null || printf '0')
-    printf '%s-%s-%s' "$agent" "$now" "$$"
-}
-
-ai_memory_session_id_qs() {
-    agent="$1"; event="$2"
-    if [ -n "${AI_MEMORY_SESSION_ID:-}" ]; then
-        printf '&session_id=%s' "$(ai_memory_url_encode "$AI_MEMORY_SESSION_ID")"
-        return 0
-    fi
-    file=$(ai_memory_session_id_file "$agent")
-    sid=""
-    if [ "$event" != "session-start" ] && [ -f "$file" ]; then
-        sid=$(sed -n '1p' "$file" 2>/dev/null)
-    fi
-    if [ -z "$sid" ]; then
-        sid=$(ai_memory_new_session_id "$agent")
-        dir=$(dirname "$file")
-        mkdir -p "$dir" 2>/dev/null || true
-        printf '%s\n' "$sid" > "$file" 2>/dev/null || true
-    fi
-    printf '&session_id=%s' "$(ai_memory_url_encode "$sid")"
-}
-
-ai_memory_clear_session_id() {
-    agent="$1"
-    rm -f "$(ai_memory_session_id_file "$agent")" 2>/dev/null || true
-}
-
 # POST stdin to "$1" as JSON, fire-and-forget. Adds an
 # `Authorization: Bearer` header when `AI_MEMORY_AUTH_TOKEN` is set.
 # The 0.5s timeout matches the project-wide hook latency budget
@@ -496,9 +346,9 @@ ai_memory_get_handoff() {
 }
 
 # Encode stdin as a JSON string (with surrounding quotes). Used by hooks
-# whose stdout contract is JSON rather than raw context text: Antigravity's
-# PreInvocation hook and Claude Code's session-start hook (which wraps the
-# handoff in hookSpecificOutput.additionalContext).
+# whose stdout contract is JSON rather than raw context text: Claude Code's
+# session-start hook (which wraps the handoff in
+# hookSpecificOutput.additionalContext).
 ai_memory_json_string() {
     awk '
         BEGIN { printf "\"" }

@@ -40,7 +40,6 @@ pub mod llm_test;
 pub mod mcp_bridge;
 pub mod move_project;
 pub mod move_session;
-pub mod openclaw_plugin;
 pub mod path_util;
 pub mod pending_writes;
 pub mod project_registry;

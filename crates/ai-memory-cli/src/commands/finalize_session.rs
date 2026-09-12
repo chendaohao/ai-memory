@@ -276,10 +276,10 @@ mod tests {
         let other_agent = SessionId::new();
         let other_scope = SessionId::new();
         for (id, project_id, agent) in [
-            (older, target, AgentKind::AntigravityCli),
-            (other_agent, target, AgentKind::Codex),
-            (other_scope, other_project, AgentKind::AntigravityCli),
-            (latest, target, AgentKind::AntigravityCli),
+            (older, target, AgentKind::Zcode),
+            (other_agent, target, AgentKind::ClaudeCode),
+            (other_scope, other_project, AgentKind::Zcode),
+            (latest, target, AgentKind::Zcode),
         ] {
             store
                 .writer
@@ -300,7 +300,7 @@ mod tests {
             .open_sessions_for_scope_agent(
                 ws,
                 target,
-                AgentKind::AntigravityCli,
+                AgentKind::Zcode,
                 ai_memory_core::OwnerFilter::Any,
                 Some(1),
             )
@@ -312,7 +312,7 @@ mod tests {
     }
 
     /// Regression for the race a blind wrapper hits when several terminal
-    /// tabs each run Kiro CLI against the same repo: two sessions for the
+    /// tabs each run Claude Code against the same repo: two sessions for the
     /// same agent+scope are open at once (`older` started first, `latest`
     /// started after — e.g. opened in a second tab while the first was
     /// still running). Targeting `older` by its exact id must return only
@@ -341,7 +341,7 @@ mod tests {
                     id,
                     workspace_id: ws,
                     project_id: proj,
-                    agent_kind: AgentKind::KiroCli,
+                    agent_kind: AgentKind::OpenCode,
                     cwd: Some(std::path::PathBuf::from("/tmp/target")),
                     actor_user: None,
                 })
@@ -354,7 +354,7 @@ mod tests {
             .open_session_for_scope_agent_by_id(
                 ws,
                 proj,
-                AgentKind::KiroCli,
+                AgentKind::OpenCode,
                 ai_memory_core::OwnerFilter::Any,
                 older,
             )
@@ -375,7 +375,7 @@ mod tests {
             .open_session_for_scope_agent_by_id(
                 ws,
                 proj,
-                AgentKind::KiroCli,
+                AgentKind::OpenCode,
                 ai_memory_core::OwnerFilter::Any,
                 latest,
             )
@@ -393,7 +393,7 @@ mod tests {
             "/tmp/project",
             "default",
             "project",
-            AgentKind::AntigravityCli,
+            AgentKind::Zcode,
             true,
         )
         .unwrap();
@@ -405,7 +405,7 @@ mod tests {
             query,
             vec![
                 ("event".to_string(), "session-end".to_string()),
-                ("agent".to_string(), "antigravity-cli".to_string()),
+                ("agent".to_string(), "zcode".to_string()),
                 ("cwd".to_string(), "/tmp/project".to_string()),
                 ("workspace".to_string(), "default".to_string()),
                 ("project".to_string(), "project".to_string()),
@@ -423,7 +423,7 @@ mod tests {
             "/tmp/project",
             "default",
             "project",
-            AgentKind::AntigravityCli,
+            AgentKind::Zcode,
             false,
         )
         .unwrap();
@@ -435,7 +435,7 @@ mod tests {
             query,
             vec![
                 ("event".to_string(), "session-end".to_string()),
-                ("agent".to_string(), "antigravity-cli".to_string()),
+                ("agent".to_string(), "zcode".to_string()),
                 ("cwd".to_string(), "/tmp/project".to_string()),
                 ("workspace".to_string(), "default".to_string()),
                 ("project".to_string(), "project".to_string()),

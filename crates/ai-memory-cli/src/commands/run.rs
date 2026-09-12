@@ -10,15 +10,13 @@ use std::time::{Duration, SystemTime};
 
 use ai_memory_core::{
     AgentKind, FinishManagedRunRequest, FinishManagedRunResponse, LinkManagedRunRequest,
-    ManagedRunContextResponse, ManagedRunStatus, PrepareManagedRunRequest,
+    ManagedRunStatus, PrepareManagedRunRequest,
     PrepareManagedRunResponse,
 };
 use ai_memory_workstream::{
     ExportedTranscript, LaunchMode, LaunchPlan, ManagedHarness, NativeSessionCandidate,
     allows_native_session_adoption, apply_yolo, build_launch_plan, discover_native_session,
-    export_transcript, has_native_session_selector, inspect_repository, kiro_explicit_session_id,
-    kiro_harness_from_source_cursor, kiro_selects_non_default_engine, kiro_selects_v2_engine,
-    kiro_selects_v3_engine, kiro_v3_resume_uses_default_store, list_native_sessions,
+    export_transcript, has_native_session_selector, inspect_repository, list_native_sessions,
     native_session_exists, wait_for_transcript_flush,
 };
 use anyhow::{Context as _, Result, anyhow};
@@ -38,16 +36,10 @@ const PREPARE_BUSY_RETRY_INTERVAL: Duration = Duration::from_millis(250);
 const IMPORT_BATCH_EVENTS: usize = 400;
 const IMPORT_BATCH_BYTES: usize = 1024 * 1024;
 const ADOPTION_CANDIDATE_LIMIT: usize = 8;
-const AUTO_HARNESSES: [ManagedHarness; 9] = [
+const AUTO_HARNESSES: [ManagedHarness; 3] = [
     ManagedHarness::Claude,
-    ManagedHarness::Codex,
     ManagedHarness::OpenCode,
-    ManagedHarness::Pi,
-    ManagedHarness::Crush,
-    ManagedHarness::Kimi,
-    ManagedHarness::CommandCode,
-    ManagedHarness::Kiro,
-    ManagedHarness::KiroV3,
+    ManagedHarness::OpenCode2,
 ];
 
 #[derive(Debug, Clone)]
@@ -193,28 +185,12 @@ pub(super) async fn run_from(config: &Config, args: RunArgs, cwd: &Path) -> Resu
                 resolved.as_str()
             )
         }));
-        automatic_harness_flavor(
-            selected,
-            provisional_harness,
-            prepared.native_session_id.as_deref(),
-        )
+        selected
     } else {
         provisional_harness
     };
-    let harness = if resolved_harness.agent_kind() == AgentKind::KiroCli {
-        acquired_try!(resolve_kiro_harness(
-            &native_args,
-            prepared.native_session_id.as_deref(),
-            prepared.source_cursor.as_deref(),
-            resolved_harness,
-            &home,
-            &repository.cwd,
-        ))
-    } else {
-        resolved_harness
-    };
+    let harness = resolved_harness;
     acquired_try!(ensure_executable_available(harness, executable.as_deref()));
-    let native_grok_rules = user_supplied_grok_rules(&native_args);
     let (mut plan, orphaned_session) = acquired_try!(build_preflighted_launch_plan(
         harness,
         executable.clone(),
@@ -312,36 +288,7 @@ pub(super) async fn run_from(config: &Config, args: RunArgs, cwd: &Path) -> Resu
         }
     }
     if args.yolo || trailing_yolo {
-        // Kiro's official dangerous mode exists on the v2 engine only
-        // (`--trust-all-tools`); the v3 engine replaced it with
-        // permissions.yaml and documents no CLI equivalent, so the wrapper
-        // maps nothing there and says so instead of failing silently.
-        if harness == ManagedHarness::KiroV3
-            || harness == ManagedHarness::Kiro && kiro_selects_non_default_engine(&plan.args)
-        {
-            eprintln!(
-                "ai-memory: --yolo maps to no verified flag on the selected Kiro engine \
-                 (v3 replaced --trust-all-tools with permissions.yaml); launching without it"
-            );
-        }
         apply_yolo(harness, &mut plan.args);
-    }
-    let remove_kiro_home = if harness == ManagedHarness::KiroV3
-        && let Some(native_session_id) = plan.expected_session_id.as_deref()
-    {
-        acquired_try!(kiro_v3_resume_uses_default_store(
-            &home,
-            &repository.cwd,
-            plan.session_dir.as_deref(),
-            native_session_id,
-        ))
-    } else {
-        false
-    };
-    if remove_kiro_home {
-        eprintln!(
-            "ai-memory: Kiro v3 stored this session under the default home despite custom KIRO_HOME; using the default home for this resume"
-        );
     }
     if plan.mode == LaunchMode::Session
         && let Some(native_session_id) = &plan.expected_session_id
@@ -359,30 +306,6 @@ pub(super) async fn run_from(config: &Config, args: RunArgs, cwd: &Path) -> Resu
         );
     }
 
-    let crush_context = if harness == ManagedHarness::Crush && plan.mode == LaunchMode::Session {
-        acquired_try!(prepare_crush_context(&endpoint, &run_path, &home).await)
-    } else {
-        None
-    };
-    let grok_context = if harness == ManagedHarness::Grok && plan.mode == LaunchMode::Session {
-        // `--rules` is single-use in Grok's argument parser, so a user-supplied
-        // rules flag wins and the packet stays undelivered (it is redelivered
-        // on the next managed run that can accept it).
-        if native_grok_rules {
-            eprintln!(
-                "ai-memory: --rules was supplied natively; the workstream context packet will be delivered on a later run"
-            );
-            None
-        } else {
-            acquired_try!(fetch_grok_context(&endpoint, &run_path).await)
-        }
-    } else {
-        None
-    };
-    if let Some(context) = &grok_context {
-        plan.args
-            .extend([OsString::from("--rules"), OsString::from(context)]);
-    }
     if interrupted_before_spawn.load(Ordering::SeqCst) {
         acquired_try!(Err(anyhow!(
             "managed run interrupted before the agent started"
@@ -408,12 +331,6 @@ pub(super) async fn run_from(config: &Config, args: RunArgs, cwd: &Path) -> Resu
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
-    if remove_kiro_home {
-        command.env_remove("KIRO_HOME");
-    }
-    if let Some(context) = &crush_context {
-        command.env("CRUSH_GLOBAL_CONFIG", context.path());
-    }
     let child = command.spawn();
 
     let mut child = match child {
@@ -445,19 +362,6 @@ pub(super) async fn run_from(config: &Config, args: RunArgs, cwd: &Path) -> Resu
             ));
         }
     };
-    if (harness == ManagedHarness::Crush || grok_context.is_some())
-        && let Err(error) = post_empty_with_retry(
-            &endpoint,
-            &format!("{run_path}/context/accept"),
-            "acknowledging managed context",
-        )
-        .await
-    {
-        eprintln!(
-            "ai-memory: {error}; the context may be delivered again on the next {} run",
-            harness.as_str()
-        );
-    }
 
     let mut heartbeat = tokio::time::interval(HEARTBEAT_INTERVAL);
     heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -664,21 +568,6 @@ fn unique_auto_agents(candidates: &[AutoSessionCandidate]) -> Vec<AgentKind> {
     agents
 }
 
-fn automatic_harness_flavor(
-    selected: ManagedHarness,
-    provisional: ManagedHarness,
-    linked_session_id: Option<&str>,
-) -> ManagedHarness {
-    if selected == ManagedHarness::Kiro
-        && provisional.agent_kind() == AgentKind::KiroCli
-        && linked_session_id.is_none()
-    {
-        provisional
-    } else {
-        selected
-    }
-}
-
 fn filter_usable_auto_sessions(
     candidates: Vec<AutoSessionCandidate>,
     available: impl Fn(ManagedHarness) -> bool,
@@ -708,61 +597,8 @@ fn filter_usable_auto_sessions(
 
 fn no_auto_session_error() -> anyhow::Error {
     anyhow!(
-        "no Claude Code, Codex, OpenCode, Pi, Crush, Kimi Code, Command Code, or Kiro CLI session was found for this directory; start one explicitly with `ai-memory run claude`, `ai-memory run codex`, `ai-memory run opencode`, `ai-memory run pi`, `ai-memory run crush`, `ai-memory run kimi`, `ai-memory run command-code`, or `ai-memory run kiro`"
+        "no Claude Code or OpenCode session was found for this directory; start one explicitly with `ai-memory run claude` or `ai-memory run opencode`"
     )
-}
-
-fn resolve_kiro_harness(
-    native_args: &[OsString],
-    linked_session_id: Option<&str>,
-    source_cursor: Option<&str>,
-    fallback: ManagedHarness,
-    home: &Path,
-    cwd: &Path,
-) -> Result<ManagedHarness> {
-    if kiro_selects_v3_engine(native_args) {
-        return Ok(ManagedHarness::KiroV3);
-    }
-    if kiro_selects_v2_engine(native_args) {
-        return Ok(ManagedHarness::Kiro);
-    }
-    if kiro_selects_non_default_engine(native_args) {
-        return Ok(ManagedHarness::Kiro);
-    }
-
-    let explicit_session_id = kiro_explicit_session_id(native_args);
-    if let Some(session_id) = explicit_session_id.as_deref().or(linked_session_id) {
-        let mut found = Vec::new();
-        for harness in [ManagedHarness::Kiro, ManagedHarness::KiroV3] {
-            let probe = build_launch_plan(harness, None, Vec::new(), None)?;
-            if native_session_exists(harness, home, cwd, probe.session_dir.as_deref(), session_id)?
-            {
-                found.push(harness);
-            }
-        }
-        match found.as_slice() {
-            [harness] => return Ok(*harness),
-            [_, _] => {
-                return Err(anyhow!(
-                    "Kiro session {} exists in both incompatible engine stores; use --fresh with an explicit --agent-engine v2 or --v3",
-                    display_session_id(session_id)
-                ));
-            }
-            _ => {}
-        }
-    }
-
-    // An exact user selector wins over the workstream's prior cursor. If its
-    // store is unavailable, keep Kiro's documented v2 default unless the user
-    // also selected v3 explicitly above.
-    if explicit_session_id.is_some() {
-        return Ok(ManagedHarness::Kiro);
-    }
-
-    if let Some(harness) = source_cursor.and_then(kiro_harness_from_source_cursor) {
-        return Ok(harness);
-    }
-    Ok(fallback)
 }
 
 fn remove_wrapper_yolo(args: &mut Vec<OsString>) -> bool {
@@ -916,116 +752,6 @@ fn executable_file(path: &Path) -> bool {
     }
 }
 
-fn user_supplied_grok_rules(native_args: &[OsString]) -> bool {
-    native_args.iter().any(|arg| {
-        arg.to_str().is_some_and(|value| {
-            ["--rules", "--append-system-prompt"]
-                .iter()
-                .any(|name| value == *name || value.starts_with(&format!("{name}=")))
-        })
-    })
-}
-
-/// Grok appends `--rules` text to its session system prompt, so the packet is
-/// delivered as an argument instead of a file. Acceptance happens only after
-/// the child spawns, matching the Crush contract.
-async fn fetch_grok_context(endpoint: &ServerEndpoint, run_path: &str) -> Result<Option<String>> {
-    let response: ManagedRunContextResponse = post_json(
-        endpoint,
-        &format!("{run_path}/context"),
-        &serde_json::json!({}),
-    )
-    .await
-    .context("loading the managed context for Grok; the agent was not started")?;
-    Ok(response.context)
-}
-
-async fn prepare_crush_context(
-    endpoint: &ServerEndpoint,
-    run_path: &str,
-    home: &Path,
-) -> Result<Option<tempfile::TempDir>> {
-    let response: ManagedRunContextResponse = post_json(
-        endpoint,
-        &format!("{run_path}/context"),
-        &serde_json::json!({}),
-    )
-    .await
-    .context("loading the managed context for Crush; the agent was not started")?;
-    let Some(context) = response.context else {
-        return Ok(None);
-    };
-
-    write_crush_context_config(&crush_global_config_path(home), &context).map(Some)
-}
-
-fn write_crush_context_config(source: &Path, context: &str) -> Result<tempfile::TempDir> {
-    let temp = tempfile::Builder::new()
-        .prefix("ai-memory-crush-")
-        .tempdir()
-        .context("creating the temporary Crush context directory")?;
-    let context_path = temp.path().join("managed-workstream.md");
-    write_private(&context_path, context.as_bytes())?;
-
-    let mut config = if source.is_file() {
-        let raw = std::fs::read(source)
-            .with_context(|| format!("reading Crush config {}", source.display()))?;
-        serde_json::from_slice::<serde_json::Value>(&raw)
-            .with_context(|| format!("parsing Crush config {}", source.display()))?
-    } else {
-        serde_json::json!({})
-    };
-    let root = config
-        .as_object_mut()
-        .context("Crush global config must be a JSON object")?;
-    let options = root
-        .entry("options")
-        .or_insert_with(|| serde_json::json!({}))
-        .as_object_mut()
-        .context("Crush global config `options` must be a JSON object")?;
-    let paths = options
-        .entry("global_context_paths")
-        .or_insert_with(|| serde_json::json!([]))
-        .as_array_mut()
-        .context("Crush `options.global_context_paths` must be an array")?;
-    let context_path = context_path.to_string_lossy().into_owned();
-    if !paths
-        .iter()
-        .any(|value| value.as_str() == Some(&context_path))
-    {
-        paths.push(serde_json::Value::String(context_path));
-    }
-    let rendered = serde_json::to_vec_pretty(&config).context("rendering Crush config")?;
-    write_private(&temp.path().join("crush.json"), &rendered)?;
-    Ok(temp)
-}
-
-fn crush_global_config_path(home: &Path) -> PathBuf {
-    if let Some(dir) = std::env::var_os("CRUSH_GLOBAL_CONFIG").filter(|value| !value.is_empty()) {
-        return PathBuf::from(dir).join("crush.json");
-    }
-    if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME").filter(|value| !value.is_empty()) {
-        return PathBuf::from(dir).join("crush/crush.json");
-    }
-    home.join(".config/crush/crush.json")
-}
-
-fn write_private(path: &Path, content: &[u8]) -> Result<()> {
-    use std::io::Write as _;
-
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt as _;
-        options.mode(0o600);
-    }
-    let mut file = options
-        .open(path)
-        .with_context(|| format!("creating {}", path.display()))?;
-    file.write_all(content)
-        .with_context(|| format!("writing {}", path.display()))
-}
 
 fn native_home(config: &Config) -> Option<PathBuf> {
     config
@@ -1340,41 +1066,22 @@ fn lease_owner_label(host: Option<&str>, process_id: u32) -> String {
 const fn managed_harness(choice: RunHarnessChoice) -> ManagedHarness {
     match choice {
         RunHarnessChoice::Claude => ManagedHarness::Claude,
-        RunHarnessChoice::Codex => ManagedHarness::Codex,
         RunHarnessChoice::OpenCode => ManagedHarness::OpenCode,
         RunHarnessChoice::OpenCode2 => ManagedHarness::OpenCode2,
-        RunHarnessChoice::Pi => ManagedHarness::Pi,
-        RunHarnessChoice::Crush => ManagedHarness::Crush,
-        RunHarnessChoice::Omp => ManagedHarness::Omp,
-        RunHarnessChoice::Kimi => ManagedHarness::Kimi,
-        RunHarnessChoice::CommandCode => ManagedHarness::CommandCode,
-        RunHarnessChoice::Kiro => ManagedHarness::Kiro,
-        RunHarnessChoice::Grok => ManagedHarness::Grok,
-        RunHarnessChoice::Antigravity => ManagedHarness::Antigravity,
     }
 }
 
-fn managed_harness_for_args(choice: RunHarnessChoice, native_args: &[OsString]) -> ManagedHarness {
-    let harness = managed_harness(choice);
-    if harness == ManagedHarness::Kiro && kiro_selects_v3_engine(native_args) {
-        ManagedHarness::KiroV3
-    } else {
-        harness
-    }
+const fn managed_harness_for_args(
+    choice: RunHarnessChoice,
+    _native_args: &[OsString],
+) -> ManagedHarness {
+    managed_harness(choice)
 }
 
 const fn managed_harness_from_agent(agent: AgentKind) -> Option<ManagedHarness> {
     match agent {
         AgentKind::ClaudeCode => Some(ManagedHarness::Claude),
-        AgentKind::Codex => Some(ManagedHarness::Codex),
         AgentKind::OpenCode => Some(ManagedHarness::OpenCode),
-        AgentKind::Pi => Some(ManagedHarness::Pi),
-        AgentKind::Crush => Some(ManagedHarness::Crush),
-        AgentKind::KimiCode => Some(ManagedHarness::Kimi),
-        AgentKind::CommandCode => Some(ManagedHarness::CommandCode),
-        AgentKind::KiroCli => Some(ManagedHarness::Kiro),
-        AgentKind::Grok => Some(ManagedHarness::Grok),
-        AgentKind::AntigravityCli => Some(ManagedHarness::Antigravity),
         _ => None,
     }
 }
@@ -1476,24 +1183,6 @@ mod tests {
                 updated_at: SystemTime::UNIX_EPOCH,
             },
         ]
-    }
-
-    #[test]
-    fn native_grok_rules_flags_suppress_context_injection() {
-        for args in [
-            vec![OsString::from("--rules"), OsString::from("be terse")],
-            vec![OsString::from("--rules=be terse")],
-            vec![
-                OsString::from("--append-system-prompt"),
-                OsString::from("x"),
-            ],
-        ] {
-            assert!(user_supplied_grok_rules(&args), "{args:?}");
-        }
-        assert!(!user_supplied_grok_rules(&[
-            OsString::from("--model"),
-            OsString::from("grok-4.5")
-        ]));
     }
 
     #[test]
@@ -1648,13 +1337,13 @@ mod tests {
     fn automatic_selection_skips_newer_sessions_for_unavailable_harnesses() {
         let candidates = vec![
             auto_candidate(ManagedHarness::Claude, 200),
-            auto_candidate(ManagedHarness::Codex, 100),
+            auto_candidate(ManagedHarness::OpenCode, 100),
         ];
         let usable =
-            filter_usable_auto_sessions(candidates, |harness| harness == ManagedHarness::Codex)
+            filter_usable_auto_sessions(candidates, |harness| harness == ManagedHarness::OpenCode)
                 .unwrap();
         assert_eq!(usable.len(), 1);
-        assert_eq!(usable[0].harness, ManagedHarness::Codex);
+        assert_eq!(usable[0].harness, ManagedHarness::OpenCode);
 
         let error =
             filter_usable_auto_sessions(vec![auto_candidate(ManagedHarness::Claude, 200)], |_| {
@@ -1669,7 +1358,7 @@ mod tests {
         let mut input = Cursor::new(b"\n");
         let mut output = Vec::new();
         let selected = choose_native_session(
-            ManagedHarness::Codex,
+            ManagedHarness::OpenCode,
             "default",
             &candidates(),
             &mut input,
@@ -1703,7 +1392,7 @@ mod tests {
 
         let mut older_input = Cursor::new(b"invalid\n2\n");
         let selected = choose_native_session(
-            ManagedHarness::Codex,
+            ManagedHarness::OpenCode,
             "default",
             &candidates(),
             &mut older_input,
@@ -1726,7 +1415,7 @@ mod tests {
             OsStr::new("run"),
             OsStr::new("--project"),
             OsStr::new("memory"),
-            OsStr::new("codex"),
+            OsStr::new("opencode"),
             OsStr::new("--yolo"),
             OsStr::new("-m"),
             OsStr::new("gpt-5"),
@@ -1771,195 +1460,6 @@ mod tests {
                 .map(OsString::from)
                 .to_vec()
         );
-    }
-
-    #[test]
-    fn kimi_cli_alias_selects_the_kimi_adapter() {
-        let cli = Cli::try_parse_from([
-            OsStr::new("ai-memory"),
-            OsStr::new("run"),
-            OsStr::new("kimi-cli"),
-            OsStr::new("--model"),
-            OsStr::new("kimi-for-coding"),
-        ])
-        .unwrap();
-        let CliCommand::Run(args) = cli.command else {
-            panic!("expected run command");
-        };
-        assert!(matches!(
-            args.harness,
-            Some(crate::cli::RunHarnessChoice::Kimi)
-        ));
-        assert_eq!(
-            args.native_args,
-            ["--model", "kimi-for-coding"].map(OsString::from).to_vec()
-        );
-    }
-
-    #[test]
-    fn command_code_aliases_select_the_managed_adapter() {
-        for name in ["command-code", "commandcode", "cmdc", "cmd"] {
-            let cli = Cli::try_parse_from([
-                OsStr::new("ai-memory"),
-                OsStr::new("run"),
-                OsStr::new(name),
-                OsStr::new("--print"),
-                OsStr::new("continue here"),
-            ])
-            .unwrap();
-            let CliCommand::Run(args) = cli.command else {
-                panic!("expected run command");
-            };
-            assert!(
-                matches!(
-                    args.harness,
-                    Some(crate::cli::RunHarnessChoice::CommandCode)
-                ),
-                "{name}"
-            );
-            assert_eq!(
-                args.native_args,
-                ["--print", "continue here"].map(OsString::from).to_vec()
-            );
-        }
-    }
-
-    #[test]
-    fn kiro_cli_alias_selects_the_kiro_adapter() {
-        for name in ["kiro", "kiro-cli"] {
-            let cli = Cli::try_parse_from([
-                OsStr::new("ai-memory"),
-                OsStr::new("run"),
-                OsStr::new(name),
-                OsStr::new("--model"),
-                OsStr::new("sonnet"),
-            ])
-            .unwrap();
-            let CliCommand::Run(args) = cli.command else {
-                panic!("expected run command");
-            };
-            assert!(
-                matches!(args.harness, Some(crate::cli::RunHarnessChoice::Kiro)),
-                "{name}"
-            );
-            assert_eq!(
-                args.native_args,
-                ["--model", "sonnet"].map(OsString::from).to_vec()
-            );
-            assert_eq!(managed_harness(args.harness.unwrap()), ManagedHarness::Kiro);
-        }
-    }
-
-    #[test]
-    fn kiro_engine_resolution_prefers_explicit_args_then_persisted_flavor() {
-        let temp = tempfile::tempdir().unwrap();
-        let cwd = temp.path().join("repo");
-        std::fs::create_dir_all(&cwd).unwrap();
-        let v3_cursor = serde_json::json!({
-            "path": "/sanitized/messages.jsonl",
-            "offset": 42,
-            "flavor": "kiro-v3",
-            "prefix_sha256": "fixture"
-        })
-        .to_string();
-
-        assert_eq!(
-            managed_harness_for_args(RunHarnessChoice::Kiro, &[OsString::from("--v3")]),
-            ManagedHarness::KiroV3
-        );
-        assert_eq!(
-            resolve_kiro_harness(
-                &[],
-                Some("missing-session"),
-                Some(&v3_cursor),
-                ManagedHarness::Kiro,
-                temp.path(),
-                &cwd,
-            )
-            .unwrap(),
-            ManagedHarness::KiroV3
-        );
-        assert_eq!(
-            resolve_kiro_harness(
-                &[OsString::from("--agent-engine=v2")],
-                Some("sess_c3774f9d-269e-40d1-aa02-2bb0c0817b4e"),
-                Some(&v3_cursor),
-                ManagedHarness::KiroV3,
-                temp.path(),
-                &cwd,
-            )
-            .unwrap(),
-            ManagedHarness::Kiro
-        );
-        assert_eq!(
-            resolve_kiro_harness(
-                &[
-                    OsString::from("--resume-id"),
-                    OsString::from("missing-explicit-session"),
-                ],
-                Some("sess_c3774f9d-269e-40d1-aa02-2bb0c0817b4e"),
-                Some(&v3_cursor),
-                ManagedHarness::KiroV3,
-                temp.path(),
-                &cwd,
-            )
-            .unwrap(),
-            ManagedHarness::Kiro
-        );
-    }
-
-    #[test]
-    fn automatic_kiro_flavors_share_one_server_agent_identity() {
-        let candidates = vec![
-            AutoSessionCandidate {
-                harness: ManagedHarness::KiroV3,
-                session: NativeSessionCandidate {
-                    native_session_id: "v3".into(),
-                    updated_at: SystemTime::UNIX_EPOCH,
-                },
-            },
-            AutoSessionCandidate {
-                harness: ManagedHarness::Kiro,
-                session: NativeSessionCandidate {
-                    native_session_id: "v2".into(),
-                    updated_at: SystemTime::UNIX_EPOCH,
-                },
-            },
-        ];
-
-        assert_eq!(unique_auto_agents(&candidates), [AgentKind::KiroCli]);
-        assert_eq!(
-            automatic_harness_flavor(ManagedHarness::Kiro, ManagedHarness::KiroV3, None),
-            ManagedHarness::KiroV3
-        );
-        assert_eq!(
-            automatic_harness_flavor(ManagedHarness::Kiro, ManagedHarness::KiroV3, Some("linked"),),
-            ManagedHarness::Kiro
-        );
-    }
-
-    #[test]
-    fn incompatible_link_starts_fresh_in_the_explicit_kiro_engine() {
-        let temp = tempfile::tempdir().unwrap();
-        let cwd = temp.path().join("repo");
-        std::fs::create_dir_all(&cwd).unwrap();
-
-        let (fresh, orphaned) = build_preflighted_launch_plan(
-            ManagedHarness::KiroV3,
-            None,
-            vec![OsString::from("--v3")],
-            Some("3f6d1c2a-0000-4000-8000-000000000aaa"),
-            false,
-            temp.path(),
-            &cwd,
-        )
-        .unwrap();
-        assert_eq!(
-            orphaned.as_deref(),
-            Some("3f6d1c2a-0000-4000-8000-000000000aaa")
-        );
-        assert_eq!(fresh.expected_session_id, None);
-        assert_eq!(fresh.args, [OsString::from("--v3")]);
     }
 
     #[test]
@@ -2019,7 +1519,7 @@ mod tests {
         .to_vec();
 
         let (resumed, orphaned) = build_preflighted_launch_plan(
-            ManagedHarness::Pi,
+            ManagedHarness::OpenCode,
             None,
             native_args.clone(),
             Some("linked"),
@@ -2034,7 +1534,7 @@ mod tests {
 
         std::fs::remove_file(transcript).unwrap();
         let (fresh, orphaned) = build_preflighted_launch_plan(
-            ManagedHarness::Pi,
+            ManagedHarness::OpenCode,
             None,
             native_args.clone(),
             Some("linked"),
@@ -2048,7 +1548,7 @@ mod tests {
         assert!(!fresh.args.iter().any(|arg| arg == "linked"));
 
         let (explicit, orphaned) = build_preflighted_launch_plan(
-            ManagedHarness::Pi,
+            ManagedHarness::OpenCode,
             None,
             [
                 native_args,
@@ -2118,7 +1618,7 @@ mod tests {
         .unwrap();
 
         let utility = build_launch_plan(
-            ManagedHarness::Codex,
+            ManagedHarness::OpenCode,
             None,
             vec![OsString::from("--version")],
             None,
@@ -2128,7 +1628,7 @@ mod tests {
         assert!(
             resolve_native_session_after_run(
                 &utility,
-                ManagedHarness::Codex,
+                ManagedHarness::OpenCode,
                 temp.path(),
                 &cwd,
                 started_at,
@@ -2139,11 +1639,11 @@ mod tests {
             .is_none()
         );
 
-        let session = build_launch_plan(ManagedHarness::Codex, None, Vec::new(), None).unwrap();
+        let session = build_launch_plan(ManagedHarness::OpenCode, None, Vec::new(), None).unwrap();
         assert_eq!(
             resolve_native_session_after_run(
                 &session,
-                ManagedHarness::Codex,
+                ManagedHarness::OpenCode,
                 temp.path(),
                 &cwd,
                 started_at,
@@ -2156,31 +1656,3 @@ mod tests {
         );
     }
 
-    #[test]
-    fn crush_context_config_preserves_user_settings_and_adds_packet() {
-        let source_dir = tempfile::tempdir().unwrap();
-        let source = source_dir.path().join("crush.json");
-        std::fs::write(
-            &source,
-            serde_json::to_vec(&serde_json::json!({
-                "options": {"debug": true, "global_context_paths": ["/existing.md"]},
-                "providers": {"custom": {"type": "openai"}}
-            }))
-            .unwrap(),
-        )
-        .unwrap();
-
-        let generated = write_crush_context_config(&source, "managed packet").unwrap();
-        let config: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(generated.path().join("crush.json")).unwrap())
-                .unwrap();
-        assert_eq!(config["options"]["debug"], true);
-        assert_eq!(config["providers"]["custom"]["type"], "openai");
-        let paths = config["options"]["global_context_paths"]
-            .as_array()
-            .unwrap();
-        assert_eq!(paths[0], "/existing.md");
-        let packet = paths[1].as_str().unwrap();
-        assert_eq!(std::fs::read_to_string(packet).unwrap(), "managed packet");
-    }
-}

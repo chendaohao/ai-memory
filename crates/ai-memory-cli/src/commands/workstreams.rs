@@ -112,7 +112,7 @@ mod tests {
             created_at: jiff::Timestamp::now().to_string(),
             last_active_at: jiff::Timestamp::now().to_string(),
             current: true,
-            linked_harnesses: vec![AgentKind::OpenCode, AgentKind::Codex],
+            linked_harnesses: vec![AgentKind::OpenCode, AgentKind::ClaudeCode],
         }];
 
         let rendered = render_human(&rows, "default", "game");
@@ -121,7 +121,7 @@ mod tests {
         // The id line is indented past the marker column so it cannot be
         // misread as a second, unmarked workstream.
         assert!(rendered.contains("\n    id: "));
-        assert!(rendered.contains("[open-code, codex]"));
+        assert!(rendered.contains("[open-code, claude-code]"));
         assert!(rendered.contains(&rows[0].workstream_id.to_string()));
     }
 
