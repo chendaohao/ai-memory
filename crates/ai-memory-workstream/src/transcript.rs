@@ -1380,6 +1380,7 @@ mod tests {
         content.push('\n');
         content.push_str("{\"type\":");
         fs::write(&path, content).unwrap();
+        let export = export_jsonl(ManagedHarness::Claude, &path, "session", None).unwrap();
         let cursor: FileCursor =
             serde_json::from_str(export.source_cursor.as_deref().unwrap()).unwrap();
         assert_eq!(cursor.offset, 82);
