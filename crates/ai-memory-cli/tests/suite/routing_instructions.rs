@@ -340,7 +340,3 @@ fn legacy_long_marker_block_rerun_upgrades_in_place_to_slim_snippet() {
         1
     );
 }
-
-#[test]
-
-#[test]
