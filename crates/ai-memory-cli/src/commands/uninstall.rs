@@ -129,7 +129,12 @@ fn build_plan(args: &UninstallArgs) -> anyhow::Result<Vec<PlannedChange>> {
             let content = std::fs::read_to_string(&path)
                 .with_context(|| format!("reading {}", path.display()))?;
             let removal = strip_ai_memory_hooks(&content)?;
-            push_rewrite(&mut plan, path, removal.removed_events, RewriteOp::HooksJson);
+            push_rewrite(
+                &mut plan,
+                path,
+                removal.removed_events,
+                RewriteOp::HooksJson,
+            );
         }
 
         let plugin = install_hooks::opencode_plugin_path()?;
@@ -1044,5 +1049,4 @@ mod tests {
         .unwrap();
         assert!(removed.is_empty());
     }
-
 }

@@ -124,9 +124,7 @@ pub fn run(config: &Config, args: SetupAgentArgs) -> Result<()> {
 
     match args.agent {
         AgentChoice::ClaudeCode => emit_claude_code(&emit_root, &args)?,
-        AgentChoice::OpenCode
-        | AgentChoice::OpenCode2
-        | AgentChoice::Zcode => {
+        AgentChoice::OpenCode | AgentChoice::OpenCode2 | AgentChoice::Zcode => {
             bail!(
                 "internal: generated integration should have returned before emitting staged hooks"
             )
@@ -181,12 +179,8 @@ fn emit_extension_setup_hint(args: &SetupAgentArgs) -> Result<()> {
 /// spawns the ai-memory binary exec-form (`type: "process"`) with the
 /// event JSON on stdin, so the only artifact is the config block.
 fn emit_zcode(args: &SetupAgentArgs) -> Result<()> {
-    let payload = build_zcode_hooks_config(
-        &args.server_url,
-        args.auth_token.as_deref(),
-        None,
-        None,
-    );
+    let payload =
+        build_zcode_hooks_config(&args.server_url, args.auth_token.as_deref(), None, None);
     let serialized =
         serde_json::to_string_pretty(&payload).context("serializing ZCode hook config")?;
     println!("# ZCode (z.ai) — merge the `hooks` block into ~/.zcode/cli/config.json");

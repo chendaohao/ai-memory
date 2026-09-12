@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 use std::fs::{self, File};
-use std::io::{BufRead as _, BufReader, Read as _, Seek as _, SeekFrom};
+use std::io::{BufRead as _, BufReader, Seek as _, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -14,7 +14,6 @@ use rusqlite::{Connection, OpenFlags, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
-use uuid::Uuid;
 
 use crate::ManagedHarness;
 
@@ -63,6 +62,7 @@ struct SqlCursor {
     id: String,
 }
 
+/// Export unseen visible transcript records for one native session.
 pub async fn export_transcript(
     harness: ManagedHarness,
     home: &Path,
@@ -839,14 +839,6 @@ fn list_opencode_sessions(
     Ok(sessions)
 }
 
-fn native_timestamp(value: i64) -> Option<SystemTime> {
-    let value = u64::try_from(value).ok()?;
-    if value < 100_000_000_000 {
-        UNIX_EPOCH.checked_add(Duration::from_secs(value))
-    } else {
-        UNIX_EPOCH.checked_add(Duration::from_millis(value))
-    }
-}
 
 fn opencode_updated(home: &Path, session_dir: Option<&Path>, session: &str) -> Result<Option<i64>> {
     let db = opencode_db(home, session_dir);

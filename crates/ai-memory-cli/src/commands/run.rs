@@ -10,8 +10,7 @@ use std::time::{Duration, SystemTime};
 
 use ai_memory_core::{
     AgentKind, FinishManagedRunRequest, FinishManagedRunResponse, LinkManagedRunRequest,
-    ManagedRunStatus, PrepareManagedRunRequest,
-    PrepareManagedRunResponse,
+    ManagedRunStatus, PrepareManagedRunRequest, PrepareManagedRunResponse,
 };
 use ai_memory_workstream::{
     ExportedTranscript, LaunchMode, LaunchPlan, ManagedHarness, NativeSessionCandidate,
@@ -751,7 +750,6 @@ fn executable_file(path: &Path) -> bool {
         true
     }
 }
-
 
 fn native_home(config: &Config) -> Option<PathBuf> {
     config
