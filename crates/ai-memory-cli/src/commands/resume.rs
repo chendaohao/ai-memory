@@ -347,12 +347,12 @@ mod tests {
 
     #[test]
     fn harness_index_zero_preserves_automatic_selection() {
-        let harnesses = [RunHarnessChoice::Claude, RunHarnessChoice::Codex];
+        let harnesses = [RunHarnessChoice::Claude, RunHarnessChoice::OpenCode];
 
         assert!(selected_harness(0, &harnesses).is_none());
         assert!(matches!(
             selected_harness(2, &harnesses),
-            Some(RunHarnessChoice::Codex)
+            Some(RunHarnessChoice::OpenCode)
         ));
     }
 
@@ -369,14 +369,14 @@ mod tests {
 
     #[test]
     fn each_workstream_remembers_its_own_harness() {
-        let harnesses = [RunHarnessChoice::Claude, RunHarnessChoice::Codex];
+        let harnesses = [RunHarnessChoice::Claude, RunHarnessChoice::OpenCode];
         let mut indices = [0, 0];
 
         let first = cycle_selected_harness(&mut indices, 0, &harnesses, HorizontalDirection::Right);
         let second = cycle_selected_harness(&mut indices, 1, &harnesses, HorizontalDirection::Left);
 
         assert!(matches!(first, Some(RunHarnessChoice::Claude)));
-        assert!(matches!(second, Some(RunHarnessChoice::Codex)));
+        assert!(matches!(second, Some(RunHarnessChoice::OpenCode)));
         assert_eq!(indices, [1, 2]);
     }
 }

@@ -1375,11 +1375,14 @@ mod tests {
     fn incomplete_final_jsonl_record_does_not_advance_cursor() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("session.jsonl");
-        fs::write(&path, b"{\"type\":\"message\",\"id\":\"one\",\"message\":{\"role\":\"user\",\"content\":\"hello\"}}\n{\"type\":").unwrap();
-        let export = export_jsonl(ManagedHarness::Pi, &path, "session", None).unwrap();
+        let first = serde_json::json!({"type":"user","sessionId":"session","message":{"role":"user","content":"hello"}});
+        let mut content = first.to_string();
+        content.push('\n');
+        content.push_str("{\"type\":");
+        fs::write(&path, content).unwrap();
         let cursor: FileCursor =
             serde_json::from_str(export.source_cursor.as_deref().unwrap()).unwrap();
-        assert_eq!(cursor.offset, 74);
+        assert_eq!(cursor.offset, 82);
         assert_eq!(export.events.len(), 1);
     }
 
