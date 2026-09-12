@@ -360,7 +360,6 @@ mod tests {
             root_names(&global_both),
             ["/home/alice/.claude/skills", "/home/alice/.agents/skills"]
         );
-
     }
 
     #[test]
