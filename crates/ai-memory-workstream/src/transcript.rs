@@ -56,6 +56,13 @@ struct FileCursor {
     prefix_sha256: Option<String>,
 }
 
+/// Timestamp-ordered read cursor for the OpenCode SQLite stores.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct SqlCursor {
+    updated: i64,
+    id: String,
+}
+
 pub async fn export_transcript(
     harness: ManagedHarness,
     home: &Path,

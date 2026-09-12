@@ -689,6 +689,8 @@ fn strip_mcp_json(
         Ok(())
     })?;
     Ok((new_content, removed))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
