@@ -1702,6 +1702,4 @@ mod tests {
         .unwrap();
         assert_eq!(found.as_deref(), Some("newer"));
     }
-
-}
 }

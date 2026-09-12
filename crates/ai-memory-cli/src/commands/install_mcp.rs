@@ -843,6 +843,4 @@ mod tests {
             "Bearer test-token-deadbeef"
         );
     }
-
-    /// Pin the append rules: `?` on a bare endpoint, `&` with an existing
-    /// query, never duplicate an existing marker.
+}

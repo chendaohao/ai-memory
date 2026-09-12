@@ -754,6 +754,3 @@ fn purge_data_refuses_when_sibling_alive() {
         "no wiring should be removed when the purge is refused up front"
     );
 }
-
-
-#[test]
