@@ -1486,6 +1486,23 @@ pub enum McpClient {
     /// entry schema is strict: unknown keys make it drop the server
     /// silently, so the generated entry carries nothing else.
     Zcode,
+    /// Trae (ByteDance IDE) — `~/.trae/mcp.json` with the standard
+    /// `mcpServers` map (`type: "http"` + `url` + optional `headers`).
+    /// MCP-only: Trae exposes no lifecycle hooks for capture. The CN
+    /// edition and Windows builds keep their config elsewhere
+    /// (`~/.trae-cn/`, `%APPDATA%\Trae CN\User\`); point `--config-file`
+    /// at the real file when those apply.
+    #[value(name = "trae")]
+    Trae,
+    /// WorkBuddy (Tencent work agent) — `~/.workbuddy/mcp.json` with the
+    /// standard `mcpServers` map (`type: "http"` + `url` + optional
+    /// `headers`). MCP-only: the agent is configured through its
+    /// Settings → MCP panel in the official flow, and no lifecycle-hook
+    /// surface exists for capture; memory is read/written through the
+    /// MCP tools. Point `--config-file` at the actual file when your
+    /// install keeps it elsewhere.
+    #[value(name = "workbuddy")]
+    WorkBuddy,
 }
 
 /// Arguments for `commit`.

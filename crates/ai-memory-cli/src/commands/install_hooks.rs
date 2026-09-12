@@ -556,6 +556,14 @@ fn infer_installed_mcp_config(agent: AgentChoice) -> Result<Option<InferredMcpCo
             &["mcp", "servers", "ai-memory"],
             "url",
         )),
+        // MCP-only clients never come back from `mcp_client_for_agent`, but
+        // the match must stay exhaustive; infer from the standard
+        // `mcpServers` map the same way Claude Code does.
+        McpClient::Trae | McpClient::WorkBuddy => Ok(infer_json_mcp_config(
+            &content,
+            &["mcpServers", "ai-memory"],
+            "url",
+        )),
     }
 }
 

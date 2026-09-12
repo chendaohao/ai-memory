@@ -147,7 +147,7 @@ fn build_plan(args: &UninstallArgs) -> anyhow::Result<Vec<PlannedChange>> {
     // ---- MCP (per client) ----
     if want(crate::cli::UninstallOnly::Mcp) {
         use crate::cli::McpClient::*;
-        for client in [ClaudeCode, OpenCode, OpenCode2, Zcode] {
+        for client in [ClaudeCode, OpenCode, OpenCode2, Zcode, Trae, WorkBuddy] {
             let paths = if matches!(client, ClaudeCode) {
                 claude_config_paths(
                     home.as_deref(),
@@ -594,7 +594,7 @@ fn generated_file_is_ours(path: &Path, kind: DeleteKind) -> bool {
 /// Where the servers object lives in each JSON client's config.
 fn mcp_servers_path(client: McpClient) -> Option<&'static [&'static str]> {
     match client {
-        McpClient::ClaudeCode => Some(&["mcpServers"]),
+        McpClient::ClaudeCode | McpClient::Trae | McpClient::WorkBuddy => Some(&["mcpServers"]),
         McpClient::OpenCode => Some(&["mcp"]),
         McpClient::OpenCode2 => Some(&["mcp", "servers"]),
         McpClient::Zcode => Some(&["mcp", "servers"]),

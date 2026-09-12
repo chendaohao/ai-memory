@@ -48,6 +48,8 @@ pub fn run(config: &Config, args: InstallMcpArgs) -> Result<()> {
         McpClient::OpenCode => render_opencode(&args)?,
         McpClient::OpenCode2 => render_opencode2(&args)?,
         McpClient::Zcode => render_zcode(&args)?,
+        McpClient::Trae => render_trae(&args)?,
+        McpClient::WorkBuddy => render_workbuddy(&args)?,
     };
     println!("{snippet}");
     Ok(())
@@ -112,6 +114,16 @@ pub(crate) fn mcp_config_path(client: crate::cli::McpClient) -> Result<PathBuf> 
         // (workspace scopes like .zcode/config.json exist, but user scope
         // is the install default for every other client too).
         McpClient::Zcode => home()?.join(".zcode").join("cli").join("config.json"),
+        // Trae reads the standard `mcpServers` map from `~/.trae/mcp.json`
+        // on macOS/Linux. The CN edition (`~/.trae-cn/`) and Windows builds
+        // (`%APPDATA%\Trae CN\User\mcp.json`) keep the file elsewhere —
+        // pass `--config-file` for those installs.
+        McpClient::Trae => home()?.join(".trae").join("mcp.json"),
+        // WorkBuddy follows the CodeBuddy-family `mcpServers` convention;
+        // the desktop app also accepts the same JSON through its
+        // Settings → MCP panel. Pass `--config-file` when your install
+        // keeps the file at another path.
+        McpClient::WorkBuddy => home()?.join(".workbuddy").join("mcp.json"),
     })
 }
 
@@ -166,7 +178,9 @@ fn apply_to_config_file(args: &InstallMcpArgs) -> Result<()> {
 
 fn json_mcp_location(client: McpClient) -> Option<JsonMcpLocation> {
     match client {
-        McpClient::ClaudeCode => Some(JsonMcpLocation::RootMcpServers),
+        McpClient::ClaudeCode | McpClient::Trae | McpClient::WorkBuddy => {
+            Some(JsonMcpLocation::RootMcpServers)
+        }
         McpClient::OpenCode => Some(JsonMcpLocation::RootMcp),
         McpClient::OpenCode2 | McpClient::Zcode => Some(JsonMcpLocation::NestedMcpServers),
     }
@@ -238,9 +252,10 @@ fn render_json_mcp_fragment(args: &InstallMcpArgs) -> Result<String> {
     Ok(serde_json::to_string_pretty(&fragment)?)
 }
 
-/// JSON entry shape used by Claude Code — `mcpServers.<name>` with
-/// `type: "http"` + `url` plus optional `headers` (or the session-aware
-/// stdio bridge).
+/// JSON entry shape used by Claude Code, Trae, and WorkBuddy — they all
+/// accept `mcpServers.<name>` with `type: "http"` + `url` plus optional
+/// `headers`. Claude Code additionally supports the session-aware stdio
+/// bridge.
 fn build_mcp_entry(args: &InstallMcpArgs) -> Result<serde_json::Value> {
     let bearer = bearer_header_value(args.auth_token.as_deref());
     // `run()` resolves the URL before dispatch; the fallback only fires for
@@ -265,6 +280,13 @@ fn build_mcp_entry(args: &InstallMcpArgs) -> Result<serde_json::Value> {
                 if let Some(b) = &bearer {
                     entry.insert("headers".into(), json!({"Authorization": b}));
                 }
+            }
+        }
+        McpClient::Trae | McpClient::WorkBuddy => {
+            entry.insert("type".into(), json!("http"));
+            entry.insert("url".into(), json!(server_url));
+            if let Some(b) = &bearer {
+                entry.insert("headers".into(), json!({"Authorization": b}));
             }
         }
         _ => bail!("internal: build_mcp_entry called for unsupported client"),
@@ -395,6 +417,34 @@ fn render_zcode(args: &InstallMcpArgs) -> Result<String> {
          # enabled/timeoutMs make ZCode drop the server silently.\n\
          # ai-memory's default stateless /mcp endpoint needs no flavor\n\
          # marker; auth goes in the headers map.\n\
+         {snippet}\n",
+        snippet = render_json_mcp_fragment(args)?,
+    ))
+}
+
+fn render_trae(args: &InstallMcpArgs) -> Result<String> {
+    Ok(format!(
+        "# Trae — merge into ~/.trae/mcp.json (or re-run with --apply).\n\
+         #\n\
+         # MCP-only: Trae exposes no lifecycle hooks, so memory reads/writes\n\
+         # go through the MCP tools and handoffs are recovered with\n\
+         # `memory_handoff_accept`. The CN edition and Windows builds keep\n\
+         # the config at ~/.trae-cn/mcp.json or\n\
+         # %APPDATA%\\Trae CN\\User\\mcp.json — pass --config-file for those.\n\
+         {snippet}\n",
+        snippet = render_json_mcp_fragment(args)?,
+    ))
+}
+
+fn render_workbuddy(args: &InstallMcpArgs) -> Result<String> {
+    Ok(format!(
+        "# WorkBuddy — merge into ~/.workbuddy/mcp.json (or re-run with --apply).\n\
+         #\n\
+         # MCP-only: the official flow adds servers through WorkBuddy's\n\
+         # Settings → MCP panel, and no lifecycle hooks exist for capture,\n\
+         # so memory reads/writes go through the MCP tools and handoffs are\n\
+         # recovered with `memory_handoff_accept`. Pass --config-file when\n\
+         # your install keeps the file elsewhere.\n\
          {snippet}\n",
         snippet = render_json_mcp_fragment(args)?,
     ))
@@ -575,6 +625,8 @@ mod tests {
             McpClient::OpenCode => render_opencode(&args).unwrap(),
             McpClient::OpenCode2 => render_opencode2(&args).unwrap(),
             McpClient::Zcode => render_zcode(&args).unwrap(),
+            McpClient::Trae => render_trae(&args).unwrap(),
+            McpClient::WorkBuddy => render_workbuddy(&args).unwrap(),
         }
     }
 
@@ -587,6 +639,8 @@ mod tests {
             McpClient::OpenCode,
             McpClient::OpenCode2,
             McpClient::Zcode,
+            McpClient::Trae,
+            McpClient::WorkBuddy,
         ] {
             let out = render_with_token(client);
             // Every client embeds the token as `Authorization:
@@ -613,6 +667,8 @@ mod tests {
             McpClient::OpenCode,
             McpClient::OpenCode2,
             McpClient::Zcode,
+            McpClient::Trae,
+            McpClient::WorkBuddy,
         ] {
             let out = render_for_test(client);
             assert!(
@@ -631,6 +687,8 @@ mod tests {
             McpClient::OpenCode => render_opencode(&args).unwrap(),
             McpClient::OpenCode2 => render_opencode2(&args).unwrap(),
             McpClient::Zcode => render_zcode(&args).unwrap(),
+            McpClient::Trae => render_trae(&args).unwrap(),
+            McpClient::WorkBuddy => render_workbuddy(&args).unwrap(),
         }
     }
 
@@ -759,6 +817,34 @@ mod tests {
         assert!(!zcode.contains("\"transport\""));
         let zcode_with_token = render_with_token(McpClient::Zcode);
         assert!(zcode_with_token.contains("\"Authorization\": \"Bearer test-token-deadbeef\""));
+        // Trae and WorkBuddy are MCP-only and share the standard
+        // `mcpServers` + `type: "http"` shape.
+        let trae = render_for_test(McpClient::Trae);
+        assert!(trae.contains("\"mcpServers\""));
+        assert!(trae.contains("\"type\": \"http\""));
+        assert!(trae.contains("~/.trae/mcp.json"));
+        let workbuddy = render_for_test(McpClient::WorkBuddy);
+        assert!(workbuddy.contains("\"mcpServers\""));
+        assert!(workbuddy.contains("\"type\": \"http\""));
+        assert!(workbuddy.contains("~/.workbuddy/mcp.json"));
+        let trae_with_token = render_with_token(McpClient::Trae);
+        assert!(trae_with_token.contains("\"Authorization\": \"Bearer test-token-deadbeef\""));
+    }
+
+    #[test]
+    fn trae_mcp_config_path_pins_default_location() {
+        assert_eq!(
+            mcp_config_path(McpClient::Trae).unwrap(),
+            home_dir().unwrap().join(".trae").join("mcp.json")
+        );
+    }
+
+    #[test]
+    fn workbuddy_mcp_config_path_pins_default_location() {
+        assert_eq!(
+            mcp_config_path(McpClient::WorkBuddy).unwrap(),
+            home_dir().unwrap().join(".workbuddy").join("mcp.json")
+        );
     }
 
     #[test]

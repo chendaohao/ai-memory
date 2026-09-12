@@ -24,7 +24,7 @@ agent, and vanish from view the moment you switch tools — or teammates.
 ai-memory is what's on the other side of those walls.
 
 - **It follows you across agents.** Claude Code, OpenCode, and ZCode feed
-  one shared memory. Quit Claude Code mid-task, open OpenCode in the same
+  one shared memory; Trae and WorkBuddy join through MCP. Quit Claude Code mid-task, open OpenCode in the same
   directory, and the next agent picks up a real handoff: where you left
   off, what failed, what's still open. Handoffs are a protocol here, not a
   convention — typed, owned, claimed exactly once.
@@ -92,6 +92,8 @@ caveats is in [`docs/support-matrix.md`](docs/support-matrix.md).
 | OpenCode | Supported |
 | OpenCode 2 (`opencode2` beta) | Supported |
 | ZCode | Supported |
+| Trae | MCP-only |
+| WorkBuddy | MCP-only |
 | LLM/auth providers | Supported |
 | Embedding providers | Supported |
 
