@@ -405,6 +405,79 @@ pub(crate) enum HookShape {
     Flat,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HookCommandPlatform {
+    Posix,
+    /// Windows script fallback: invoke the staged `.ps1` hook through an
+    /// encoded PowerShell program so a host runner cannot expand its env setup.
+    Windows,
+    /// Claude Code on Windows invokes hooks through bash (Git for
+    /// Windows), not PowerShell. Commands use POSIX `.sh` scripts
+    /// wrapped in `bash -c '...'` with drive-letter paths converted
+    /// to Git Bash format (`C:\x` → `/c/x`).
+    WindowsBash,
+    /// Windows, native: invoke the `ai-memory` binary directly
+    /// (`<exe> hook --event … --agent …`) with no shell or child
+    /// processes — ~3.5× faster per hook than `WindowsBash`. Default for
+    /// Claude Code on Windows; see
+    /// `docs/windows.md#native-hook-command-claude-code-on-windows`.
+    WindowsNative,
+    /// POSIX (Linux/macOS), native: invoke the `ai-memory` binary directly
+    /// (`<exe> hook --event …`) instead of the `.sh` script, so the hook gets
+    /// the local spool + OIDC-token fallback. The **default** for native
+    /// Linux/macOS Claude Code installs (mirrors `WindowsNative`). The
+    /// Linux/macOS Docker wrapper forces `posix` so its host-rendered config
+    /// keeps the `.sh` path (the host has no local binary). Override with
+    /// `AI_MEMORY_HOOK_PLATFORM=posix` to get the shell scripts.
+    PosixNative,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct HookCommandContext<'a> {
+    platform: HookCommandPlatform,
+    agent: &'a str,
+    data_dir: Option<&'a Path>,
+    /// Install-time default project strategy baked into the command
+    /// (`install-hooks --project-strategy`). `None` bakes nothing.
+    project_strategy: Option<&'a str>,
+    /// Whether this render path may use Claude Code's exec-form hook handler.
+    /// Only `install-hooks --agent claude-code` sets this; setup-agent/docker
+    /// snippets keep command-string script fallback even when the platform env
+    /// is overridden to `windows-native`.
+    claude_windows_exec_allowed: bool,
+    /// Bake `--capture-assistant` onto the native `stop` command only (#196).
+    /// Set exclusively by `install-hooks --agent claude-code --capture-assistant`.
+    capture_assistant: bool,
+}
+
+impl<'a> HookCommandContext<'a> {
+    const fn new(
+        platform: HookCommandPlatform,
+        agent: &'a str,
+        data_dir: Option<&'a Path>,
+        project_strategy: Option<&'a str>,
+    ) -> Self {
+        Self {
+            platform,
+            agent,
+            data_dir,
+            project_strategy,
+            claude_windows_exec_allowed: false,
+            capture_assistant: false,
+        }
+    }
+
+    const fn allow_claude_windows_exec(mut self) -> Self {
+        self.claude_windows_exec_allowed = true;
+        self
+    }
+
+    const fn with_capture_assistant(mut self, on: bool) -> Self {
+        self.capture_assistant = on;
+        self
+    }
+}
+
 fn native_capture_assistant_arg(context: HookCommandContext<'_>, event: &str) -> &'static str {
     if context.capture_assistant && event == "stop" {
         " --capture-assistant"

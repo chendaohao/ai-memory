@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use crate::cli::{AgentChoice, CaptureModeArg, InstallHooksArgs, McpClient, ProjectStrategyArg};
-use crate::commands::apply_shared::{ApplyOutcome, apply_atomic, mutate_json, mutate_toml};
+use crate::commands::apply_shared::{ApplyOutcome, apply_atomic, mutate_json};
 use crate::commands::install_mcp;
 use crate::commands::path_util::home_dir;
 use crate::commands::render_shared::{
@@ -558,7 +558,6 @@ fn infer_installed_mcp_config(agent: AgentChoice) -> Result<Option<InferredMcpCo
         )),
     }
 }
-
 
 fn mcp_client_for_agent(agent: AgentChoice) -> Option<McpClient> {
     match agent {
@@ -4649,5 +4648,4 @@ mod tests {
             );
         }
     }
-
 }

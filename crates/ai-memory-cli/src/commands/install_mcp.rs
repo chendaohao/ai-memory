@@ -11,6 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
+use anyhow::{Context, Result, bail};
 use serde_json::json;
 
 use crate::cli::{InstallMcpArgs, McpClient};
@@ -18,7 +19,6 @@ use crate::commands::apply_shared::{ApplyOutcome, apply_atomic, mutate_json};
 use crate::commands::path_util::{claude_config_dir, home_dir};
 use crate::commands::render_shared::bearer_header_value;
 use crate::config::{Config, DEFAULT_MCP_URL};
-
 
 #[derive(Clone, Copy)]
 enum JsonMcpLocation {
@@ -133,7 +133,6 @@ fn claude_code_config_path_in(env_override: Option<std::ffi::OsString>) -> Resul
         .context("could not locate $HOME for ~/.claude.json")?
         .join(".claude.json"))
 }
-
 
 /// Resolve the user-config file for this client. Honours
 /// `--config-file` when provided, else uses the canonical default
