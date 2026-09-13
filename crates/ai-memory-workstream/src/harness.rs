@@ -372,7 +372,7 @@ mod tests {
         ));
         assert!(!allows_native_session_adoption(
             ManagedHarness::OpenCode,
-            &[OsString::from("doctor")]
+            &[OsString::from("models")]
         ));
         assert!(!allows_native_session_adoption(
             ManagedHarness::Claude,
