@@ -197,6 +197,7 @@ fn launch_mode(harness: ManagedHarness, args: &[OsString]) -> LaunchMode {
         ManagedHarness::OpenCode => [
             "completion",
             "acp",
+            "auth",
             "mcp",
             "attach",
             "debug",
