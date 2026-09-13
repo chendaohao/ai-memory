@@ -273,9 +273,24 @@ fn only_hooks_preserves_mcp_in_same_file() {
         .args(["uninstall", "--apply", "--only", "hooks", "--yes"])
         .status()
         .unwrap();
-    assert!(status.success());
+    assert!(
+        status.success(),
+        "uninstall failed: {}",
+        {
+            let out = command_with_home(home.path())
+                .args(["uninstall", "--apply", "--only", "hooks", "--yes"])
+                .output()
+                .unwrap();
+            format!(
+                "status={status:?} stdout={} stderr={}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            )
+        }
+    );
 
-    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(zcode.join("config.json")).unwrap()).unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(zcode.join("config.json")).unwrap()).unwrap();
     // Our ZCode hook entry removed, the third-party entry survives...
     assert!(
         v["hooks"]["events"].get("SessionStart").is_none(),
