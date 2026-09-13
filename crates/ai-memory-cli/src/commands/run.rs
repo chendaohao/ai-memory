@@ -1494,7 +1494,7 @@ mod tests {
     }
 
     #[test]
-        fn missing_linked_session_starts_fresh_but_explicit_selectors_win() {
+    fn missing_linked_session_starts_fresh_but_explicit_selectors_win() {
         let temp = tempfile::tempdir().unwrap();
         let cwd = temp.path().join("repo");
         let store = temp.path().join(".claude/projects/-repo");
@@ -1536,8 +1536,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(orphaned.as_deref(), Some("linked"));
-        assert!(fresh.args.iter().any(|arg| arg == "--resume"));
-        assert!(fresh.args.iter().any(|arg| arg == "linked"));
+        // A missing linked session falls back to a fresh native session:
+        // Claude pre-generates its own session id instead of resuming.
+        assert!(fresh.args.iter().any(|arg| arg == "--session-id"));
+        assert!(!fresh.args.iter().any(|arg| arg == "--resume"));
+        assert!(!fresh.args.iter().any(|arg| arg == "linked"));
 
         let (explicit, orphaned) = build_preflighted_launch_plan(
             ManagedHarness::Claude,
@@ -1624,20 +1627,25 @@ mod tests {
             .is_none()
         );
 
+        // A session-bearing Claude launch pre-generates its own native id,
+        // so resolution reports that id and never adopts the unrelated
+        // store entry written above.
         let session = build_launch_plan(ManagedHarness::Claude, None, Vec::new(), None).unwrap();
+        let resolved = resolve_native_session_after_run(
+            &session,
+            ManagedHarness::Claude,
+            temp.path(),
+            &cwd,
+            started_at,
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(
-            resolve_native_session_after_run(
-                &session,
-                ManagedHarness::Claude,
-                temp.path(),
-                &cwd,
-                started_at,
-                None,
-            )
-            .await
-            .unwrap()
-            .as_deref(),
-            Some("unrelated-current")
+            resolved.as_deref(),
+            session.expected_session_id.as_deref(),
+            "the pre-generated id wins; the unrelated entry must not be adopted"
         );
+        assert_ne!(resolved.as_deref(), Some("unrelated-current"));
     }
 }
