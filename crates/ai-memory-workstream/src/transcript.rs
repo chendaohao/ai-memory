@@ -350,6 +350,7 @@ fn parse_claude(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn parse_content_blocks(
     agent: AgentKind,
     session: &str,

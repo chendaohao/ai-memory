@@ -1926,6 +1926,7 @@ check(markedButEmpty.disposition === "keep", "allowlist-marker-present-empty-cap
         );
     }
 
+    #[cfg(windows)]
     #[test]
     fn windows_encoded_hook_executes_through_an_outer_powershell() {
         let temp = tempfile::tempdir().unwrap();
