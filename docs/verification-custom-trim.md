@@ -180,3 +180,59 @@ setup-agent、文档矩阵）已裁干净；残留集中在**数据词汇层**�
 文档核实：opencode **没有** `doctor` 子命令，测试断言用 `models` 是对的；
 顺带发现官方列表有 `auth` 而代码 utility 列表缺失（`opencode auth` 会被
 误判为会话启动、可能误触发 adoption 提示），已补入 `harness.rs`。
+
+## 8. 同步上游 v2.2.1（2026-09-13）
+
+### 8.1 随合并一起做的小改进
+
+- `ci.yml` / `windows.yml` 的 `cargo test` 加 `--no-fail-fast`：一个套件
+  失败不再掩盖后续套件（第 5 节教训的制度化）。
+- `harness.rs`：OpenCode utility 列表补 `auth`。
+- `dependabot.yml`：新增 cargo 生态的月度依赖更新。
+- 本验证记录提交入库（`fb00c388`）。
+
+### 8.2 合并执行
+
+`origin/main`（上游 v2.2.1，44 个提交：POSIX hook 事件 spooling #719、
+hook 200ms 预算修复、GNU-sparse 恢复修复 #718、v2.2.0/v2.2.1 发布）
+合入 `custom/trim-agents`，93 个文件 +5597/-305。
+
+7 个文件冲突，解法统一为"保留裁剪的 agent 面 + 吸收上游功能性改动"：
+README、support-matrix、uninstall.rs、install_mcp.rs（12 块，全是上游
+新增 Muse/Swival/VsCodeCopilot/Zed/Devin 等已删客户端 vs 保留的
+Trae/WorkBuddy）、install_hooks.rs、cli.rs（保留 claude 通配名解析等
+新测试，丢弃 devin/kiro/pool 的）取裁剪侧；`hooks/_lib.sh` 取上游侧
+（briefing/session-id 桥接等 agent 无关的新共享函数）。
+
+合并后三处收尾：
+
+- cli.rs 自动合并区带进的 devin/kiro/pool 测试引用已删 `AgentChoice`
+  变体 → 删除。
+- install_mcp.rs 自动合并区带进 4 个 Muse 测试 → 删除。
+- `tests/hooks/test_lib.sh` 上游新增的 antigravity 用例调用已裁掉的
+  `ai_memory_antigravity_is_initial_invocation` → 删除该块
+  （`ai_memory_extract_cwd`/`extract_session_id` 仍在，相关用例保留）。
+
+### 8.3 首轮 CI（1de3a0ca）暴露的两处漏网与修复
+
+1. `crates/ai-memory-mcp/src/server.rs` 的
+   `include_str!("../../../hooks/grok/session-start.sh")`（上游新测试内嵌
+   被裁掉的 grok 脚本）→ 删除该测试（`clippy`/`test` 同时失败，同一根因）。
+2. `changelog sections` 冻结检查失败：合并把上游 v2.2.0/v2.2.1 的已发布
+   章节带进了 PR diff，而 fork 的 main 还停在 8f669a0a。修复：fork main
+   快进到上游 main（74d2d31e，无 fork 私有提交，纯 FF），PR 基线更新后
+   已发布章节不再属于"本次修改"。
+
+另：CI 的 `--no-fail-fast` 已生效（test job 跑完所有套件后才退出）。
+
+### 8.4 最终结果（7fe56a7d）
+
+- [ci#35](https://github.com/chendaohao/ai-memory/actions/runs/34739737285)
+  **success**，15 个 job 全绿：test (ubuntu) + test (macos) 双腿、
+  linux/macos-aarch64/macos-x86_64 三平台 release 构建、changelog、
+  docker-smoke、cargo-deny/audit、gitleaks 等全部通过（full-ci 标签生效）。
+- [windows#36](https://github.com/chendaohao/ai-memory/actions/runs/34739761749)
+  （手动 dispatch）**success**——原生 Windows 全量测试通过。
+- nix#1 success。
+
+结论：裁剪分支已与上游 v2.2.1 同步并全平台验证通过，PR #2 可合并。
