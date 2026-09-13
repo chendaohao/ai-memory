@@ -178,13 +178,12 @@ pub(super) async fn run_from(config: &Config, args: RunArgs, cwd: &Path) -> Resu
             );
             provisional_harness.agent_kind()
         });
-        let selected = acquired_try!(managed_harness_from_agent(resolved).ok_or_else(|| {
+        acquired_try!(managed_harness_from_agent(resolved).ok_or_else(|| {
             anyhow!(
                 "the server selected unsupported automatic harness '{}'",
                 resolved.as_str()
             )
-        }));
-        selected
+        }))
     } else {
         provisional_harness
     };

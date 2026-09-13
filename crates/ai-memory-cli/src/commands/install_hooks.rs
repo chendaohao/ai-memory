@@ -2866,6 +2866,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn install_project_strategy_preserves_baked_when_flag_absent() {
         let tmp = TempDir::new().unwrap();
         let cfg = tmp.path().join("settings.json");
