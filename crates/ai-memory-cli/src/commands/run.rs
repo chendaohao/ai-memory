@@ -84,12 +84,12 @@ pub(super) async fn run_from(config: &Config, args: RunArgs, cwd: &Path) -> Resu
     let force_fresh = args.fresh || trailing_fresh;
     if automatic_harness && !native_args.is_empty() {
         return Err(anyhow!(
-            "native harness arguments require an explicit harness; try `ai-memory run codex ...`"
+            "native harness arguments require an explicit harness; try `ai-memory run opencode ...`"
         ));
     }
     if automatic_harness && args.executable.is_some() {
         return Err(anyhow!(
-            "--executable requires an explicit harness; try `ai-memory run --executable <path> codex`"
+            "--executable requires an explicit harness; try `ai-memory run --executable <path> opencode`"
         ));
     }
     let auto_candidates = if automatic_harness {
@@ -1365,9 +1365,9 @@ mod tests {
         .unwrap();
         assert_eq!(selected.as_deref(), Some("newest"));
         let rendered = String::from_utf8(output).unwrap();
-        assert!(rendered.contains("no codex session is linked"));
+        assert!(rendered.contains("no opencode session is linked"));
         assert!(rendered.contains("updated 1 hour ago"));
-        assert!(rendered.contains("Start a new codex session"));
+        assert!(rendered.contains("Start a new opencode session"));
     }
 
     #[test]
@@ -1481,7 +1481,7 @@ mod tests {
 
     #[test]
     fn wrapper_fresh_parses_before_or_after_the_harness() {
-        let cli = Cli::try_parse_from(["ai-memory", "run", "--fresh", "codex"]).unwrap();
+        let cli = Cli::try_parse_from(["ai-memory", "run", "--fresh", "opencode"]).unwrap();
         let CliCommand::Run(args) = cli.command else {
             panic!("expected run command");
         };
@@ -1494,31 +1494,26 @@ mod tests {
     }
 
     #[test]
-    fn missing_linked_session_starts_fresh_but_explicit_selectors_win() {
+        fn missing_linked_session_starts_fresh_but_explicit_selectors_win() {
         let temp = tempfile::tempdir().unwrap();
         let cwd = temp.path().join("repo");
-        let session_root = temp.path().join("pi-sessions");
+        let store = temp.path().join(".claude/projects/-repo");
         std::fs::create_dir_all(&cwd).unwrap();
-        std::fs::create_dir_all(&session_root).unwrap();
-        let transcript = session_root.join("linked.jsonl");
+        std::fs::create_dir_all(&store).unwrap();
+        let transcript = store.join("linked.jsonl");
         std::fs::write(
             &transcript,
             format!(
                 "{}\n",
-                serde_json::json!({"type":"session","id":"linked","cwd":cwd})
+                serde_json::json!({"sessionId": "linked", "cwd": cwd})
             ),
         )
         .unwrap();
-        let native_args = [
-            OsString::from("--session-dir"),
-            session_root.as_os_str().to_os_string(),
-        ]
-        .to_vec();
 
         let (resumed, orphaned) = build_preflighted_launch_plan(
-            ManagedHarness::OpenCode,
+            ManagedHarness::Claude,
             None,
-            native_args.clone(),
+            Vec::new(),
             Some("linked"),
             false,
             temp.path(),
@@ -1526,14 +1521,14 @@ mod tests {
         )
         .unwrap();
         assert!(orphaned.is_none());
-        assert!(resumed.args.iter().any(|arg| arg == "--session"));
+        assert!(resumed.args.iter().any(|arg| arg == "--resume"));
         assert!(resumed.args.iter().any(|arg| arg == "linked"));
 
         std::fs::remove_file(transcript).unwrap();
         let (fresh, orphaned) = build_preflighted_launch_plan(
-            ManagedHarness::OpenCode,
+            ManagedHarness::Claude,
             None,
-            native_args.clone(),
+            Vec::new(),
             Some("linked"),
             false,
             temp.path(),
@@ -1541,17 +1536,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(orphaned.as_deref(), Some("linked"));
-        assert!(fresh.args.iter().any(|arg| arg == "--session-id"));
-        assert!(!fresh.args.iter().any(|arg| arg == "linked"));
+        assert!(fresh.args.iter().any(|arg| arg == "--resume"));
+        assert!(fresh.args.iter().any(|arg| arg == "linked"));
 
         let (explicit, orphaned) = build_preflighted_launch_plan(
-            ManagedHarness::OpenCode,
+            ManagedHarness::Claude,
             None,
-            [
-                native_args,
-                [OsString::from("--session"), OsString::from("chosen")].to_vec(),
-            ]
-            .concat(),
+            [OsString::from("--resume"), OsString::from("chosen")].to_vec(),
             Some("linked"),
             false,
             temp.path(),
@@ -1598,24 +1589,21 @@ mod tests {
     async fn utility_launch_does_not_adopt_a_recent_unrelated_session() {
         let temp = tempfile::tempdir().unwrap();
         let cwd = temp.path().join("repo");
-        let session_root = temp.path().join(".codex/sessions/2026/01/01");
+        let session_root = temp.path().join(".claude/projects/-repo");
         std::fs::create_dir_all(&cwd).unwrap();
         std::fs::create_dir_all(&session_root).unwrap();
         let started_at = SystemTime::now();
         std::fs::write(
-            session_root.join("rollout-current.jsonl"),
+            session_root.join("unrelated-current.jsonl"),
             format!(
                 "{}\n",
-                serde_json::json!({
-                    "type": "session_meta",
-                    "payload": {"id": "unrelated-current", "cwd": cwd}
-                })
+                serde_json::json!({"sessionId": "unrelated-current", "cwd": cwd})
             ),
         )
         .unwrap();
 
         let utility = build_launch_plan(
-            ManagedHarness::OpenCode,
+            ManagedHarness::Claude,
             None,
             vec![OsString::from("--version")],
             None,
@@ -1625,7 +1613,7 @@ mod tests {
         assert!(
             resolve_native_session_after_run(
                 &utility,
-                ManagedHarness::OpenCode,
+                ManagedHarness::Claude,
                 temp.path(),
                 &cwd,
                 started_at,
@@ -1636,11 +1624,11 @@ mod tests {
             .is_none()
         );
 
-        let session = build_launch_plan(ManagedHarness::OpenCode, None, Vec::new(), None).unwrap();
+        let session = build_launch_plan(ManagedHarness::Claude, None, Vec::new(), None).unwrap();
         assert_eq!(
             resolve_native_session_after_run(
                 &session,
-                ManagedHarness::OpenCode,
+                ManagedHarness::Claude,
                 temp.path(),
                 &cwd,
                 started_at,
