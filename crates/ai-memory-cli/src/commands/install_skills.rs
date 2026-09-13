@@ -110,7 +110,7 @@ fn resolve_target_roots_for_platform(
     cwd: &Path,
     home: Option<&Path>,
     claude_config_dir: Option<&Path>,
-    platform: SkillHostPlatform,
+    _platform: SkillHostPlatform,
 ) -> Result<Vec<TargetRoot>> {
     if let Some(target_dir) = &args.target_dir {
         return Ok(vec![TargetRoot::new(target_dir.clone())]);

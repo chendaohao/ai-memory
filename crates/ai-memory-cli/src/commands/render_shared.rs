@@ -383,7 +383,6 @@ pub(crate) const ZCODE_HOOK_TIMEOUT_MS: u64 = 10_000;
 /// (same reasoning as Kiro v2's `max_output_size`).
 pub(crate) const ZCODE_HOOK_MAX_OUTPUT_BYTES: usize = 64 * 1024;
 
-
 /// Different agents nest hook entries differently. Two shapes
 /// cover everyone we support:
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -394,15 +393,6 @@ pub(crate) enum HookShape {
     /// Gemini CLI tolerates (but doesn't require) a sibling
     /// `sequential` key at the outer level — we don't set it.
     Nested,
-    /// Command Code's nested handler shape without an outer matcher. Its
-    /// stable hook schema treats omission as "all tools" and does not fire
-    /// SessionStart/Stop when a matcher is present.
-    NestedWithoutMatcher,
-    /// Cursor: `"e": [ { "type":"command", "command":"...",
-    /// "matcher":"" } ]` (no inner `hooks` array). Cursor's
-    /// `hooks.json` also requires a sibling `version: 1` key at
-    /// the top level — handled by the caller's apply path.
-    Flat,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -586,16 +576,11 @@ fn build_hook_payload_for_platform(
         // Empty matcher = fire on every event of this kind. Right
         // for ai-memory's capture hooks (every prompt, every tool
         // call, every session boundary).
-        let entry = match shape {
-            HookShape::Nested => json!([{
-                "matcher": "",
-                "hooks": [handler],
-            }]),
-            HookShape::NestedWithoutMatcher => json!([{
-                "hooks": [handler],
-            }]),
-            HookShape::Flat => Value::Array(vec![hook_handler_with_matcher(handler)]),
-        };
+        let _ = shape;
+        let entry = json!([{
+            "matcher": "",
+            "hooks": [handler],
+        }]);
         hooks_block.insert((*event).to_string(), entry);
     }
     json!({ "hooks": hooks_block })
@@ -635,13 +620,6 @@ fn hook_handler_value(spec: HookHandlerSpec) -> Value {
             "args": args,
         }),
     }
-}
-
-fn hook_handler_with_matcher(mut handler: Value) -> Value {
-    if let Some(obj) = handler.as_object_mut() {
-        obj.insert("matcher".to_string(), Value::String(String::new()));
-    }
-    handler
 }
 
 fn script_for_platform(script: &str, platform: HookCommandPlatform) -> Cow<'_, str> {
@@ -1780,12 +1758,8 @@ check(markedButEmpty.disposition === "keep", "allowlist-marker-present-empty-cap
                 shape,
                 HookCommandContext::new(platform, agent, None, None).allow_claude_windows_exec(),
             );
-            match shape {
-                HookShape::Nested | HookShape::NestedWithoutMatcher => {
-                    v.pointer("/hooks/SessionStart/0/hooks/0").unwrap().clone()
-                }
-                HookShape::Flat => v.pointer("/hooks/SessionStart/0").unwrap().clone(),
-            }
+            let _ = shape;
+            v.pointer("/hooks/SessionStart/0/hooks/0").unwrap().clone()
         }
 
         for (platform, agent, shape) in [
@@ -1859,7 +1833,6 @@ check(markedButEmpty.disposition === "keep", "allowlist-marker-present-empty-cap
                 .is_none(),
             "unapproved Claude render paths must retain command-string schema: {setup_like}"
         );
-
     }
 
     /// #611: Antigravity runs its hook `command` string through

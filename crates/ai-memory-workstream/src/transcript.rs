@@ -839,7 +839,6 @@ fn list_opencode_sessions(
     Ok(sessions)
 }
 
-
 fn opencode_updated(home: &Path, session_dir: Option<&Path>, session: &str) -> Result<Option<i64>> {
     let db = opencode_db(home, session_dir);
     if !db.is_file() {

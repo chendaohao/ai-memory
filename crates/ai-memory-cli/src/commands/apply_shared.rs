@@ -204,29 +204,6 @@ where
     Ok(out)
 }
 
-/// Read-mutate-write for TOML files via `toml_edit` (preserves
-/// comments + formatting from the original).
-///
-/// `mutator` receives the parsed `DocumentMut` and can use the full
-/// `toml_edit` API to make changes. Returns the rendered TOML.
-///
-/// # Errors
-/// Returns an error if the input is non-empty and not parseable.
-pub fn mutate_toml<F>(original: &str, mutator: F) -> Result<String>
-where
-    F: FnOnce(&mut toml_edit::DocumentMut) -> Result<()>,
-{
-    let mut doc: toml_edit::DocumentMut = if original.trim().is_empty() {
-        toml_edit::DocumentMut::new()
-    } else {
-        original.parse().with_context(|| {
-            "existing file isn't valid TOML; refusing to overwrite. Inspect by hand, \
-             rename it, or delete it before re-running --apply."
-        })?
-    };
-    mutator(&mut doc)?;
-    Ok(doc.to_string())
-}
 
 #[cfg(test)]
 mod tests {
@@ -387,23 +364,6 @@ mod tests {
     fn json_mutator_rejects_invalid_json() {
         let err = mutate_json("{not valid", |_| Ok(())).unwrap_err();
         assert!(format!("{err:?}").contains("isn't valid JSON"));
-    }
-
-    #[test]
-    fn toml_mutator_preserves_comments_and_other_tables() {
-        let original = "# top comment kept\n\
-                        [other]\n\
-                        keep = \"this\"\n";
-        let out = mutate_toml(original, |doc| {
-            doc["mcp_servers"]["ai-memory"]["url"] = toml_edit::value("http://homelab:49374/mcp");
-            Ok(())
-        })
-        .unwrap();
-        assert!(out.contains("# top comment kept"));
-        assert!(out.contains("[other]"));
-        assert!(out.contains("keep = \"this\""));
-        assert!(out.contains("ai-memory"));
-        assert!(out.contains("http://homelab:49374/mcp"));
     }
 
     #[test]
