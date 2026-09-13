@@ -265,7 +265,7 @@ fn only_hooks_preserves_mcp_in_same_file() {
     std::fs::create_dir_all(&zcode).unwrap();
     std::fs::write(
         zcode.join("config.json"),
-        r#"{"hooks":{"enabled":true,"events":{"SessionStart":[{"command":"ai-memory","args":["hook","--event","session-start","--agent","zcode","--server-url","http://h:49374"]}]},"PostToolUse":[{"command":"other-tool","args":["observe"]}]},"mcp":{"servers":{"ai-memory":{"type":"http","url":"http://127.0.0.1:49374/mcp"}}}}"#,
+        r#"{"hooks":{"enabled":true,"events":{"SessionStart":[{"command":"ai-memory","args":["hook","--event","session-start","--agent","zcode","--server-url","http://h:49374"]}],"PostToolUse":[{"command":"other-tool","args":["observe"]}]},"mcp":{"servers":{"ai-memory":{"type":"http","url":"http://127.0.0.1:49374/mcp"}}}}"#,
     )
     .unwrap();
 

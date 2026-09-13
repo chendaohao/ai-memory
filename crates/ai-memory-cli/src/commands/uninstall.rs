@@ -605,7 +605,9 @@ fn strip_zcode_hooks(content: &str) -> Result<HookRemoval> {
         };
         strip_hook_events(events, &mut removed_events);
         if events.is_empty()
-            && let Some(hooks) = root.get_mut("hooks").and_then(|value| value.as_object_mut())
+            && let Some(hooks) = root
+                .get_mut("hooks")
+                .and_then(|value| value.as_object_mut())
         {
             hooks.remove("events");
         }
