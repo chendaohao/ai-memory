@@ -2863,6 +2863,7 @@ async fn process_authorized(
                 // identity. NULL stays anonymous/shared, including rows that
                 // predate owner recording.
                 actor: session_actor.clone(),
+                evidence: Vec::new(),
             })
             .await?;
         // The baton follows the SESSION's owner, so it reaches the person who
@@ -3391,6 +3392,7 @@ async fn consolidate_or_synth(
             }),
             author_id: None,
             actor,
+            evidence: Vec::new(),
         })
         .await?;
     let _ = state
@@ -4855,7 +4857,7 @@ mod tests {
 
         let briefing = state
             .reader
-            .briefing_for_project(ws, proj, 1, ai_memory_core::OwnerFilter::Any)
+            .briefing_for_project(ws, proj, 1, ai_memory_core::OwnerFilter::Any, false)
             .await
             .unwrap();
         assert_eq!(
@@ -7420,6 +7422,7 @@ mod tests {
                 state.project_id,
                 1,
                 ai_memory_core::OwnerFilter::Any,
+                false,
             )
             .await
             .unwrap()
@@ -7467,7 +7470,8 @@ mod tests {
                     state.workspace_id,
                     state.project_id,
                     1,
-                    ai_memory_core::OwnerFilter::Any
+                    ai_memory_core::OwnerFilter::Any,
+                    false
                 )
                 .await
                 .unwrap()
@@ -9582,6 +9586,7 @@ mod tests {
                 admission_ctx: None,
                 author_id: None,
                 actor: ai_memory_core::ActorContext::anonymous(),
+                evidence: Vec::new(),
             })
             .await
             .unwrap();
@@ -9633,6 +9638,7 @@ mod tests {
                 project_id,
                 1,
                 ai_memory_core::OwnerFilter::Any,
+                false,
             )
             .await
             .unwrap();
@@ -10316,6 +10322,7 @@ mod tests {
             author_id: None,
             expires_at: None,
             entities: Vec::new(),
+            evidence: Vec::new(),
         }
     }
 
@@ -11756,7 +11763,7 @@ mod tests {
             assert_eq!(
                 post.body,
                 format!(
-                    "tool_family: non-file\ntool_call_id: call-native-1\noutcome: unknown\n---\n{project}: [REDACTED]"
+                    "tool_family: non-file\ntool_call_id: call-native-1\noutcome: unknown\n---\n{project}: [REDACTED:custom]"
                 )
             );
             assert!(
@@ -12199,7 +12206,7 @@ mod tests {
         }));
         assert!(observations.iter().any(|observation| {
             observation.kind == ObservationKind::Stop
-                && observation.body == "completed safely: [REDACTED]"
+                && observation.body == "completed safely: [REDACTED:custom]"
         }));
         for sentinel in [TOOL_SENTINEL, ASSISTANT_SENTINEL] {
             assert!(

@@ -11,6 +11,7 @@ mod fts_drift_status;
 mod handoff_ownership;
 mod most_recently_active_scope;
 mod multi_session;
+mod retrieval_tuning_streams;
 mod session_ids_touching_scope;
 mod session_observations;
 mod session_scope_from_observations;

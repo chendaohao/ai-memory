@@ -494,6 +494,16 @@ Additional boundary rules:
   release**: dispatch `ci` (macOS legs) and `windows` on the exact
   release-candidate SHA and wait for green before tagging. Never tag a
   release whose SHA lacks a green full matrix.
+- **Every release updates the Homebrew tap — do not forget it.** After
+  `release.yml` publishes the GitHub release and its per-target tarballs,
+  update `~/Projects/homebrew-tap/Formula/ai-memory.rb`: bump `version` and
+  set each platform `sha256` to the value from the release's published
+  `ai-memory-<target>.tar.gz.sha256` assets (`macos-aarch64`, `macos-x86_64`,
+  `linux-aarch64`, `linux-x86_64`), then commit (`ai-memory X.Y.Z`) and push
+  the tap. Verify each `sha256` matches the published asset before pushing — a
+  wrong hash makes `brew install` fail for everyone. This is a mandatory,
+  recurring post-release step (it has been forgotten repeatedly); do not rely
+  on a contributor PR to the tap to remember it.
 - **No version bumps or release tags without explicit user approval.**
   Do not bump crate/package versions automatically.
 - **PR evaluation:** report pros, cons, and recommended fix, then ask for
@@ -501,7 +511,7 @@ Additional boundary rules:
 - **MCP tool surface changes** require updating `MEMORY_INSTRUCTIONS`,
   `ai_memory_core::SNIPPET_BODY`, README/docs tool references, and the
   regression tests asserting every tool appears in both prompt surfaces.
-  The tool count is currently 18 (see `docs/ARCHITECTURE.md`).
+  The tool count is currently 19 (see `docs/ARCHITECTURE.md`).
 - **Semantic versioning:** patch = fixes; minor = additive (new CLI
   subcommands, MCP tools, config keys, a new agent harness or LLM
   provider); major = breaking (on-disk format without migration, removed

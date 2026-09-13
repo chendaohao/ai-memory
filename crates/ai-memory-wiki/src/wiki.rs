@@ -733,6 +733,7 @@ impl Wiki {
                 author_id: None,
                 expires_at: meta.expires_at,
                 entities: meta.entities,
+                evidence: Vec::new(),
             })
             .await?;
         Ok(id)
@@ -1458,6 +1459,7 @@ impl Wiki {
             author_id,
             expires_at,
             entities,
+            evidence: Vec::new(),
         };
 
         let result = {
@@ -1572,6 +1574,7 @@ impl Wiki {
                 author_id: None,
                 expires_at: meta.expires_at,
                 entities: meta.entities,
+                evidence: Vec::new(),
             })
             .await?;
         Ok(id)
@@ -1924,6 +1927,7 @@ impl Wiki {
                         author_id: req.author_id,
                         expires_at: parse_expires_at(&req.path, &req.frontmatter)?,
                         entities: parse_entities(&req.path, &req.frontmatter)?,
+                        evidence: req.evidence.clone(),
                     })
                 })
                 .collect::<WikiResult<Vec<_>>>()?;
@@ -2049,6 +2053,7 @@ impl Wiki {
             admission_ctx,
             author_id,
             actor,
+            evidence,
         } = req;
 
         // Defence-in-depth: scrub the body before we touch disk or the
@@ -2115,6 +2120,9 @@ impl Wiki {
             crate::markdown::extract_all_links(&markdown.frontmatter, &markdown.body, &path);
         let expires_at = parse_expires_at(&path, &markdown.frontmatter)?;
         let entities = parse_entities(&path, &markdown.frontmatter)?;
+        // Read before the destructuring move below: the embed step needs the
+        // L0 `abstract:` line out of the final frontmatter.
+        let abstract_text = frontmatter_abstract(&markdown.frontmatter).map(str::to_owned);
 
         let Markdown {
             frontmatter: final_frontmatter,
@@ -2158,6 +2166,7 @@ impl Wiki {
                     author_id,
                     expires_at,
                     entities,
+                    evidence,
                 })
                 .await
             {
@@ -2201,6 +2210,38 @@ impl Wiki {
                         )
                         .await;
                 }
+            }
+            // L0 abstract: the frontmatter `abstract:` line is embedded on
+            // its own so the opt-in abstract stream can rank on the sharp
+            // one-line summary. A page rewritten without the key has its
+            // stale abstract row removed, mirroring the body row's
+            // replace-on-write semantics.
+            match abstract_text.as_deref() {
+                Some(abstract_text) => match embedder.embed_document(abstract_text).await {
+                    Ok(vec) => {
+                        self.writer
+                            .store_abstract_embeddings(vec![ai_memory_store::EmbeddingWrite {
+                                page_id,
+                                vector_bytes: f32_vec_to_bytes(&vec),
+                                provider: embedder.provider().to_string(),
+                                model: embedder.model().to_string(),
+                                dim: embedder.dim(),
+                            }])
+                            .await?;
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, path = %page_id, "abstract embedding failed; page indexed without it");
+                        let _ = self
+                            .writer
+                            .record_embed_failure(
+                                page_id,
+                                ai_memory_store::EmbedOutcome::Failed,
+                                Some(e.to_string()),
+                            )
+                            .await;
+                    }
+                },
+                None => self.writer.delete_abstract_embedding(page_id).await?,
             }
         }
 
@@ -2260,6 +2301,12 @@ pub struct WritePageRequest {
     /// (consolidator, lint rewriters) that build `WritePageRequest`
     /// without an HTTP request layer.
     pub author_id: Option<ai_memory_core::UserId>,
+    /// Evidence sources backing this write (P2,
+    /// docs/design-hindsight-borrowings.md §3), forwarded verbatim to
+    /// [`ai_memory_core::NewPage::evidence`]. Populated by the
+    /// consolidator from the session(s) it drew on; empty for every
+    /// other caller (MCP tool, admin endpoints, lint rewriters).
+    pub evidence: Vec<ai_memory_core::PageEvidence>,
     /// Identity carried in the on-disk frontmatter's `last_modified_by`
     /// block AND the admission webhook payload's `ctx.actor`. The auth
     /// middleware fills this from the four-rung resolution (injected as
@@ -2408,6 +2455,15 @@ pub(crate) fn parse_expires_at(
 /// current file's value when nothing but the timestamp would change, so
 /// an idempotent rewrite emits byte-identical markdown (no git churn,
 /// and the store's modulo-`generated.at` comparison keeps the row).
+/// The frontmatter `abstract:` line, when it is a non-empty string.
+fn frontmatter_abstract(frontmatter: &serde_json::Value) -> Option<&str> {
+    frontmatter
+        .get("abstract")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+}
+
 fn conform_frontmatter_for_disk(abs: &Path, page_path: &str, markdown: &mut Markdown) {
     ai_memory_core::okf::conform_frontmatter(page_path, &mut markdown.frontmatter);
     let inherited = std::fs::read_to_string(abs)
@@ -2953,6 +3009,7 @@ mod tests {
             admission_ctx: None,
             author_id: None,
             actor: ai_memory_core::ActorContext::anonymous(),
+            evidence: Vec::new(),
         }
     }
 
@@ -3054,6 +3111,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_page_embeds_frontmatter_abstract_and_cleans_stale_rows() {
+        let tmp = TempDir::new().unwrap();
+        let (store, wiki, ws, proj) = scoped(&tmp).await;
+        let embedder: Arc<dyn ai_memory_llm::Embedder> =
+            Arc::new(ai_memory_llm::SyntheticEmbedder::new(64));
+        let wiki = wiki.with_embedder(embedder);
+        let write_abs = |frontmatter: serde_json::Value| {
+            wiki.write_page(WritePageRequest {
+                workspace_id: ws,
+                project_id: proj,
+                path: PagePath::new("notes/abs.md").unwrap(),
+                frontmatter,
+                body: "alpha bravo".to_string(),
+                tier: Tier::Semantic,
+                pinned: false,
+                title: None,
+                admission_ctx: None,
+                author_id: None,
+                actor: ActorContext::anonymous(),
+                evidence: Vec::new(),
+            })
+        };
+
+        write_abs(serde_json::json!({"title": "abs", "abstract": "one-line summary"}))
+            .await
+            .unwrap();
+        let ids = store
+            .reader
+            .abstract_embedded_page_ids(
+                ws,
+                proj,
+                "synthetic".to_string(),
+                "bag-of-words-v1".to_string(),
+                64,
+            )
+            .await
+            .unwrap();
+        assert_eq!(ids.len(), 1, "abstract embedded at write time");
+
+        // Rewriting without the key leaves the latest version without an
+        // abstract row; the superseded version's row stays behind, matching
+        // the body embedding's versioning semantics.
+        write_abs(serde_json::json!({"title": "abs"}))
+            .await
+            .unwrap();
+        let ids = store
+            .reader
+            .abstract_embedded_page_ids(
+                ws,
+                proj,
+                "synthetic".to_string(),
+                "bag-of-words-v1".to_string(),
+                64,
+            )
+            .await
+            .unwrap();
+        assert!(
+            ids.is_empty(),
+            "latest version must not carry an abstract row"
+        );
+    }
+
+    #[tokio::test]
     async fn auto_improve_sidecar_writes_non_indexed_review_file() {
         let tmp = TempDir::new().unwrap();
         let (store, wiki, ws, proj) = scoped(&tmp).await;
@@ -3095,7 +3215,7 @@ mod tests {
         .await;
         let sidecar = wiki.write_auto_improve_sidecar(ws, proj, id).await.unwrap();
         let content = std::fs::read_to_string(sidecar).unwrap();
-        assert!(content.contains("[REDACTED]"));
+        assert!(content.contains("[REDACTED:"));
         assert!(!content.contains("sk-ant-leak"));
         assert!(!content.contains("hunter2"));
         assert!(!content.contains("ghp_"));
@@ -3428,7 +3548,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert!(stored.body.contains("[REDACTED]"));
+        assert!(stored.body.contains("[REDACTED:"));
         assert!(!stored.body.contains("sk-ant-leak"));
         assert!(
             std::fs::read_to_string(wiki.abs_path(
@@ -3437,7 +3557,7 @@ mod tests {
                 &PagePath::new("notes/mutated.md").unwrap()
             ))
             .unwrap()
-            .contains("[REDACTED]")
+            .contains("[REDACTED:")
         );
     }
 
@@ -3824,7 +3944,7 @@ mod tests {
         // The on-disk page must not contain any of the planted
         // secrets; each should have been replaced with [REDACTED].
         assert!(
-            on_disk.contains("[REDACTED]"),
+            on_disk.contains("[REDACTED:"),
             "expected redaction in: {on_disk}"
         );
         assert!(
@@ -3911,6 +4031,7 @@ mod tests {
                 admission_ctx: None,
                 author_id: None,
                 actor: ai_memory_core::ActorContext::anonymous(),
+                evidence: Vec::new(),
             })
             .collect();
         let ids = wiki.apply_batch(batch).await.unwrap();
@@ -4077,6 +4198,7 @@ mod tests {
                 }),
                 author_id: None,
                 actor: ai_memory_core::ActorContext::anonymous(),
+                evidence: Vec::new(),
             }])
             .await
             .unwrap();
@@ -4088,7 +4210,7 @@ mod tests {
             &PagePath::new("batch/admitted.md").unwrap(),
         ))
         .unwrap();
-        assert!(on_disk.contains("[REDACTED]"), "{on_disk}");
+        assert!(on_disk.contains("[REDACTED:api_key]"), "{on_disk}");
         assert!(!on_disk.contains("sk-1234567890abcdef"), "{on_disk}");
 
         let hits = store
@@ -4231,6 +4353,7 @@ mod tests {
             admission_ctx: None,
             author_id: None,
             actor: ai_memory_core::ActorContext::anonymous(),
+            evidence: Vec::new(),
         })
         .await
         .unwrap();
@@ -4247,6 +4370,7 @@ mod tests {
             admission_ctx: None,
             author_id: None,
             actor: ai_memory_core::ActorContext::anonymous(),
+            evidence: Vec::new(),
         })
         .await
         .unwrap();
@@ -4370,6 +4494,7 @@ mod tests {
             }),
             author_id: None,
             actor: ai_memory_core::ActorContext::anonymous(),
+            evidence: Vec::new(),
         })
         .await
         .unwrap();
@@ -4520,6 +4645,7 @@ mod tests {
                 email: Some("alice@example.com".into()),
                 ..ai_memory_core::ActorContext::default()
             },
+            evidence: Vec::new(),
         })
         .await
         .unwrap();
@@ -4578,6 +4704,7 @@ mod tests {
             admission_ctx: None,
             author_id: None,
             actor: ai_memory_core::ActorContext::anonymous(),
+            evidence: Vec::new(),
         })
         .await
         .unwrap();
@@ -4663,6 +4790,7 @@ mod tests {
             admission_ctx: None,
             author_id: None,
             actor: ai_memory_core::ActorContext::anonymous(),
+            evidence: Vec::new(),
         };
 
         // Many rounds so any interleave window is likely to be exercised.
@@ -4721,6 +4849,7 @@ mod tests {
             admission_ctx: None,
             author_id: None,
             actor: ai_memory_core::ActorContext::anonymous(),
+            evidence: Vec::new(),
         })
         .await
         .unwrap();
@@ -5482,6 +5611,7 @@ mod tests {
                 author_id: None,
                 expires_at: None,
                 entities: vec![],
+                evidence: Vec::new(),
             })
             .await
             .unwrap();

@@ -7,6 +7,167 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-09-12
+
+### Fixed
+- The POSIX shell hook bundle no longer drops a lifecycle event when the
+  server is unreachable or answers 5xx. A failed delivery is written to
+  `<data_dir>/hook-spool/` in the same on-disk contract `ai-memory hook-drain`
+  reads (same filename shape, same `SpoolEntry` JSON, same 0600/0700 modes,
+  tmp+rename), with an `ingest_key` minted once at spool time so a shell drain
+  and a concurrent `hook-drain` cannot double-ingest; the backlog is flushed
+  behind the next delivery that succeeds, detached from the hook so the agent
+  never waits. A 4xx stays a permanent rejection and is not retried. This is
+  the durability the generated TypeScript integrations got in #580, for the
+  path the docker deploy installs. The PowerShell bundle is unchanged (#719).
+- The POSIX shell hook bundle's `POST /hook` now hard-timeouts at 200 ms
+  rather than 500 ms, which is the budget invariant 5 documents for a script
+  hook. A real loopback round trip runs about 0.3 ms, so a local install is
+  unaffected; against a remote server the tighter ceiling is safe only because
+  a missed window now spools instead of dropping (above). The handoff GET keeps
+  its 1 s: it is fed synchronously to the agent's context, and truncating an
+  almost-ready handoff costs more than it saves (#719).
+- `ai-memory restore` no longer rejects the GNU-sparse SQLite entry that
+  `ai-memory backup` itself produces. `tar::Builder`'s default sparse
+  detection archives `db/memory.sqlite` as a GNU-sparse entry (header type
+  `S`) whenever the SQLite snapshot has real holes on disk, which
+  `validate_restore_entry`'s `is_file()`/`is_dir()` check rejected as an
+  "unsupported entry type" — a verified, valid backup could not be restored,
+  with no recovery path but hand-editing the archive. `tar` already expands
+  GNU-sparse blocks to their full logical content while iterating entries, so
+  restore now accepts the type and unpacks it exactly like a regular file
+  (#718).
+
+## [2.2.0] - 2026-09-12
+
+### Added
+- Retrieval `explain` now names the **typed edge** a graph-stream neighbour
+  was reached by: `memory_query(explain=true)` reports `graph_via.edge` =
+  `causes` / `fixes` / `contradicts` (omitted for a plain `references` link), so
+  it is visible *why* a page surfaced through the link graph. Retrieval ranking
+  is unchanged — this is explanation only; typed-edge weighting and `contradicts`
+  capping are deferred behind the eval harness (docs/design-hindsight-borrowings.md P3).
+- Page-grain ingestion windows (`pages.valid_from` / `valid_to`, V62) and
+  a second `as_of` stream: `memory_query(as_of=T)` now fuses the entity
+  timeline with version-filtered full-text search over the page versions
+  alive at T, using the default path's RRF (k=60) plus the same bounded
+  authority adjustment — current-index relevance over knowledge valid at T. This
+  answers entity-less pages and paraphrased audit questions ("which
+  database were we on during the outage?") that the entity-only lookup
+  missed. `explain=true` reports both streams (`streams_active:
+  ["entity", "fts"]`) with per-stream ranks and RRF contributions.
+  Vector, graph, and the raw-observation fallback stay out of audit mode;
+  the default (no `as_of`) path is unchanged. Every retire path
+  (supersede, decay, reorg graveyard, move-regenerate) closes both grains
+  in the same transaction, and the V62 backfill closes successor-less
+  retirements at the decay marker, existing entity-link close, or
+  `updated_at` fallback, preserving recorded reorg/move history.
+  Phase B world-time stays deferred. (#656)
+- `[retrieval]` section with two opt-in ranking signals, both off by default
+  so unconfigured stores rank exactly as before. `query_intent` routes
+  lexically session-recall queries ("上次 / 之前那次…的会话 / last time /
+  yesterday …") past the default session-page authority penalty
+  (×0.77 combined kind/tier), with `session_recall_bonus` (default 0.25)
+  sizing the lift; `abstract_vectors` adds a fifth RRF stream over the new
+  `page_abstract_embeddings` table (V61) — the L0 layer: a page's
+  frontmatter `abstract:` line is embedded on its own, at write time when an
+  embedder is attached and by the same backfill as the body otherwise
+  (a one-line summary embeds far more sharply than a
+  multi-thousand-character body). Measured on a 138-query golden set over a
+  production two-year wiki (FTS5 + entity + vector + graph, mis-tei
+  Qwen3-Embedding-8B): hit@1 0.609 → 0.746 (+22%), NDCG@10 0.782 → 0.879
+  (+12%) with both enabled; every unrouted category keeps its exact
+  baseline ordering. Cross-checked on an independently built 99-query
+  golden set against the same store: hit@1 0.556 → 0.626, NDCG@10
+  0.712 → 0.779 (+9.4%). Both signals are visible per hit in
+  `memory_query(explain=true)` (`intent`, `intent_boost`,
+  `abstract_rank`, `rrf.abstract`). (#672)
+- `memory_handoff_list` lets no-stdout and MCP-only clients inspect open
+  project handoffs without claiming or expiring them, then
+  `memory_handoff_accept` can claim that exact `handoff_id` once. Grok,
+  Zero, and other clients that discard SessionStart stdout no longer have
+  to recover a baton by blindly accepting the latest row. Listing is
+  owner-filtered like accept (own plus shared; root-only `any_owner`);
+  it is not a second claim path, and Grok SessionStart still does not
+  fetch `/handoff`. (#664)
+- `install-instructions --compact` writes a slimmer managed routing block for
+  projects that already have the detailed ai-memory Agent Skills installed. The
+  compact block keeps the same start/end markers (so refresh/uninstall still
+  find it), the untrusted-history security scaffold, and the cross-harness
+  memory-of-record guidance; `full_block` and the default remain unchanged.
+  (#675)
+- `memory_install_self_routing` accepts `compact: Option<bool>` so agent-driven
+  refreshes of a compact-installed file preserve the compact routing block
+  instead of rewriting it back to full. (#685)
+- The `openai-compat` provider now sends OpenRouter's app-attribution
+  headers (`HTTP-Referer`, `X-Title`) by default when its base URL points
+  at `openrouter.ai`, so ai-memory's usage shows up on OpenRouter's app
+  leaderboard. An explicit `AI_MEMORY_LLM_HEADERS` entry for either header
+  still wins, and a non-OpenRouter compat endpoint (Ollama, vLLM, LM
+  Studio) never receives them. (#686)
+- `ai-memory run` now accepts any `claude*`-prefixed harness name
+  (`claude-corp`, `claude-personal`, ...), all resolving to the same
+  `ManagedHarness::Claude`/`AgentKind::ClaudeCode` — no new session store,
+  migration, or agent kind. This is for callers juggling more than one
+  Claude account (e.g. Corporate and Personal): name each account's `PATH`
+  wrapper script `claude-<account>` and pair it with `--executable
+  claude-<account>` (bare names already resolve through `PATH`) so
+  `ai-memory run claude-corp --executable claude-corp` and `ai-memory run
+  claude-personal --executable claude-personal` each launch the right
+  binary while reading clearly in shell history (#687).
+- `install-mcp --client muse` registers ai-memory with Meta's Muse Code,
+  merging a native streamable-HTTP entry with bearer `headers` into the
+  snake_case `mcp_servers` map of `~/.config/muse/settings.json` and
+  preserving sibling servers. The writer adds the mandatory
+  `"schema_version": 1` when it is absent — without that key every `muse`
+  command fails at startup with `malformed settings file` — and never
+  rewrites an existing value, so a future schema is not downgraded. The entry
+  sets `"mode": "optional"` because Muse defaults it to `required`, which
+  aborts the whole run when the memory server is unreachable. MCP-only:
+  Muse documents a lifecycle hook surface, but the output contract of its
+  `SessionStart` event is not specified, so capture and managed workstreams
+  are not claimed. Skills need no extra step — Muse reads `~/.agents/skills`,
+  which `install-skills` already writes (#659).
+- Belief-strength evidence substrate (P2, `docs/design-hindsight-borrowings.md`
+  §3): a new append-only `page_evidence` table (V63,
+  `(page_id, source_kind, source_id, created_at)`, `source_kind` one of
+  `session`/`observation`/`feedback`/`reconsolidation`) records what
+  produced or reaffirmed each page version, written in the same
+  transaction as the page upsert. Rule-based and zero-LLM — the
+  consolidator cites the session(s) it drew on for both the single-page
+  and batch write paths, so the substrate populates on the default path
+  with no provider configured. `hybrid_search_explained` (and therefore
+  `memory_query(explain=true)`) now reports `evidence_count` per hit,
+  batch-fetched once after fusion; the default (non-explained) path and
+  ranking are unchanged — evidence is inert data and an explain field
+  this release, not a ranking input. The confidence-into-`PageAuthority`
+  step described in the design doc is deferred behind the planned R2
+  retrieval eval.
+- Standing-answer boot surfacing (P4, `docs/design-hindsight-borrowings.md`
+  §5): `memory_briefing` accepts an opt-in `settled_first: bool` (default
+  `false`, unchanged briefing shape). When `true`, the snapshot's new
+  `settled` array leads with the project's highest-standing `rule`/`decision`
+  pages — up to 8, ordered by `page_evidence` count (P2) then recency — so an
+  agent can boot from settled answers instead of re-deriving them. Pure SQL,
+  no LLM call; every other briefing field, and the default `settled_first:
+  false` path, are byte-for-byte unchanged.
+
+### Changed
+- The privacy sanitizer now redacts to a **typed marker** — `[REDACTED:<kind>]`
+  (e.g. `[REDACTED:github_token]`, `[REDACTED:jwt]`, `[REDACTED:env_secret]`,
+  `[REDACTED:custom]` for operator patterns) — instead of a bare `[REDACTED]`,
+  so a later reader knows *what kind* of secret was present without it leaking.
+  Redaction stays complete and idempotent; the trust boundary is unchanged.
+  Note: this changes the durable sanitized string, so pages written before the
+  upgrade keep `[REDACTED]` while new writes carry the label (see
+  `docs/design-hindsight-borrowings.md` P1).
+
+### Fixed
+- Preserved recorded entity-link retirement timestamps when backfilling
+  page ingestion windows for historical reorg/move-regenerate pages,
+  preventing empty page windows when `updated_at` still held creation
+  time. Clarified current-index ranking and snapshot-based rollback. (#682)
+
 ## [2.1.2] - 2026-09-11
 
 ### Changed
@@ -5452,7 +5613,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidator used server startup default project instead of the
   session's actual project.
 
-[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v2.1.2...HEAD
+[Unreleased]: https://github.com/akitaonrails/ai-memory/compare/v2.2.1...HEAD
+[2.2.1]: https://github.com/akitaonrails/ai-memory/releases/tag/v2.2.1
+[2.2.0]: https://github.com/akitaonrails/ai-memory/releases/tag/v2.2.0
 [2.1.2]: https://github.com/akitaonrails/ai-memory/releases/tag/v2.1.2
 [2.1.1]: https://github.com/akitaonrails/ai-memory/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/akitaonrails/ai-memory/compare/v2.0.3...v2.1.0
