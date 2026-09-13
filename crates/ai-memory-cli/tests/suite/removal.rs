@@ -269,24 +269,15 @@ fn only_hooks_preserves_mcp_in_same_file() {
     )
     .unwrap();
 
-    let status = command_with_home(home.path())
+    let output = command_with_home(home.path())
         .args(["uninstall", "--apply", "--only", "hooks", "--yes"])
-        .status()
+        .output()
         .unwrap();
     assert!(
-        status.success(),
-        "uninstall failed: {}",
-        {
-            let out = command_with_home(home.path())
-                .args(["uninstall", "--apply", "--only", "hooks", "--yes"])
-                .output()
-                .unwrap();
-            format!(
-                "status={status:?} stdout={} stderr={}",
-                String::from_utf8_lossy(&out.stdout),
-                String::from_utf8_lossy(&out.stderr)
-            )
-        }
+        output.status.success(),
+        "uninstall failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
 
     let v: serde_json::Value =
