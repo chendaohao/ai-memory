@@ -4005,7 +4005,8 @@ mod tests {
             ),
             (
                 "opencode2",
-                build_opencode2_plugin("http://127.0.0.1:49374", Some("tok"), None, "denylist"),
+                build_opencode2_plugin("http://127.0.0.1:49374", Some("tok"), None, "denylist")
+                    .unwrap(),
             ),
         ] {
             // The fire-and-forget delivery must be gone...

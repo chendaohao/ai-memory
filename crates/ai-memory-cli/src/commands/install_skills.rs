@@ -368,8 +368,6 @@ mod tests {
             &args(InstallSkillsScope::Global, InstallSkillsAgent::ClaudeCode),
             Path::new("/repo"),
             Some(Path::new("/home/alice")),
-            None,
-            None,
             Some(Path::new("/stores/claude")),
             SkillHostPlatform::Other,
         )
@@ -383,8 +381,6 @@ mod tests {
             &args(InstallSkillsScope::Project, InstallSkillsAgent::ClaudeCode),
             Path::new("/repo"),
             Some(Path::new("/home/alice")),
-            None,
-            None,
             Some(Path::new("/stores/claude")),
             SkillHostPlatform::Other,
         )

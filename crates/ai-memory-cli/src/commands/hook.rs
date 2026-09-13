@@ -1187,7 +1187,6 @@ mod tests {
         assert!(report.contains("0 DROPPED"), "{report}");
     }
 
-
     #[tokio::test]
     async fn antigravity_native_pre_tool_use_allows_and_spools_valid_input() {
         let tmp = tempfile::tempdir().unwrap();

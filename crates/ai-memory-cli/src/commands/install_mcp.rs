@@ -452,7 +452,6 @@ fn render_workbuddy(args: &InstallMcpArgs) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
     use std::fs;
     use tempfile;
 
