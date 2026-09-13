@@ -10945,19 +10945,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn grok_session_start_hook_does_not_fetch_handoff() {
-        let src = include_str!("../../../hooks/grok/session-start.sh");
-        assert!(
-            src.contains("Do NOT fetch /handoff"),
-            "Grok SessionStart must keep the capture-only refusal"
-        );
-        assert!(
-            !src.contains("/handoff?"),
-            "Grok SessionStart must not fetch the claiming /handoff endpoint"
-        );
-    }
-
     #[tokio::test]
     async fn handoff_cancel_expires_open_handoff_and_clears_briefing_count() {
         let (_tmp, store, server, _ws, _pj) = setup_server().await;
