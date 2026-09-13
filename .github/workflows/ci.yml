@@ -70,7 +70,10 @@ jobs:
       - name: Regenerate the Tailwind bundle
         if: matrix.os == 'ubuntu-latest'
         run: echo "TAILWIND_BUILD=1" >> "$GITHUB_ENV"
-      - run: cargo test --workspace --all-targets
+      # --no-fail-fast: a failure in one suite must not hide failures in
+      # later suites. A masked workstream failure survived several green-ish
+      # rounds this way (see docs/verification-custom-trim.md §5).
+      - run: cargo test --workspace --all-targets --no-fail-fast
       - name: Vendored tailwind.css is current
         if: matrix.os == 'ubuntu-latest'
         run: git diff --exit-code -- crates/ai-memory-web/static/tailwind.css

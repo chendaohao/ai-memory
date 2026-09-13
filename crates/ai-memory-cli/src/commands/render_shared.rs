@@ -5,8 +5,7 @@
 //! pieces of state:
 //!
 //! 1. The per-agent lifecycle-hook event lists ai-memory wires up
-//!    (Claude/Grok share `CLAUDE_CODE_EVENTS`; Codex, Cursor, Gemini,
-//!    and Antigravity define their own profiles) — kept in sync between
+//!    (kept in sync between
 //!    hook-bundle generation (setup-agent) and config rendering
 //!    (install-hooks).
 //! 2. The optional `Authorization: Bearer <token>` header used by
@@ -48,100 +47,6 @@ pub(crate) const CLAUDE_CODE_EVENTS: [(&str, &str); 9] = [
     ("SubagentStop", "subagent-stop.sh"),
 ];
 
-/// Kimi Code lifecycle events ai-memory hooks. Claude Code's 9-event
-/// vocabulary (`CLAUDE_CODE_EVENTS`) plus `PostToolUseFailure`: Kimi Code
-/// fires `PostToolUse` on successful calls only and reports failures
-/// separately. The failure entry reuses the post-tool-use script — the
-/// server aliases `PostToolUseFailure` to `PostToolUse` and reads the
-/// outcome from the payload.
-///
-/// Kimi Code wires hooks as `[[hooks]]` entries in
-/// `$KIMI_CODE_HOME/config.toml` (TOML) instead of a JSON settings file,
-/// so its payload comes from [`kimi_code_hook_commands`] rather than the
-/// JSON hook shapes.
-///
-/// Adding a hook event means updating this list AND adding the matching
-/// `.sh` and `.ps1` files under `hooks/kimi-code/` (a reused script like
-/// post-tool-use needs no new file). The install-hooks parity test fails
-/// if the bundle drifts.
-pub(crate) const KIMI_CODE_EVENTS: [(&str, &str); 10] = [
-    ("SessionStart", "session-start.sh"),
-    ("UserPromptSubmit", "user-prompt-submit.sh"),
-    ("PreToolUse", "pre-tool-use.sh"),
-    ("PostToolUse", "post-tool-use.sh"),
-    ("PostToolUseFailure", "post-tool-use.sh"),
-    ("PreCompact", "pre-compact.sh"),
-    ("Stop", "stop.sh"),
-    ("SessionEnd", "session-end.sh"),
-    ("SubagentStart", "subagent-start.sh"),
-    ("SubagentStop", "subagent-stop.sh"),
-];
-
-/// Kiro CLI v2-engine lifecycle events. Each pair is
-/// `(trigger-name-in-agent-config, POSIX hook-script-filename)`.
-///
-/// The v2 engine embeds hooks in agent configs (`~/.kiro/agents/*.json`)
-/// keyed by camelCase triggers, per kiro.dev/docs/hooks and the
-/// shipping `HookTrigger` serde in aws/amazon-q-developer-cli
-/// (`crates/chat-cli/src/cli/agent/hook.rs`). The vocabulary is exactly
-/// these five events — there is no PreCompact/SessionEnd/subagent
-/// equivalent. Adding a hook event means updating this list AND adding
-/// the matching `.sh` and `.ps1` files under `hooks/kiro-cli/`; the
-/// install-hooks parity test fails if the bundle drifts.
-///
-pub(crate) const KIRO_CLI_V2_EVENTS: [(&str, &str); 5] = [
-    ("agentSpawn", "session-start.sh"),
-    ("userPromptSubmit", "user-prompt-submit.sh"),
-    ("preToolUse", "pre-tool-use.sh"),
-    ("postToolUse", "post-tool-use.sh"),
-    ("stop", "stop.sh"),
-];
-
-/// Kiro CLI v3-engine lifecycle events. V3 uses PascalCase triggers in a
-/// standalone versioned hook file rather than v2's camelCase agent field.
-pub(crate) const KIRO_CLI_V3_EVENTS: [(&str, &str); 5] = [
-    ("SessionStart", "session-start.sh"),
-    ("UserPromptSubmit", "user-prompt-submit.sh"),
-    ("PreToolUse", "pre-tool-use.sh"),
-    ("PostToolUse", "post-tool-use.sh"),
-    ("Stop", "stop.sh"),
-];
-
-/// Devin lifecycle events ai-memory hooks. Each pair is
-/// `(event-name-in-Devin-settings, POSIX hook-script-filename)`.
-///
-/// Devin uses the same event vocabulary as Claude Code, but with two differences:
-/// - `PostCompaction` instead of `PreCompact` (triggers *after* compaction with a `summary` field)
-/// - No `SubagentStart`/`SubagentStop` (Devin does not expose subagent boundaries as hook events)
-pub(crate) const DEVIN_EVENTS: [(&str, &str); 7] = [
-    ("SessionStart", "session-start.sh"),
-    ("UserPromptSubmit", "user-prompt-submit.sh"),
-    ("PreToolUse", "pre-tool-use.sh"),
-    ("PostToolUse", "post-tool-use.sh"),
-    ("PostCompaction", "post-compaction.sh"),
-    ("Stop", "stop.sh"),
-    ("SessionEnd", "session-end.sh"),
-];
-
-/// Pool (Poolside Agent CLI) lifecycle events ai-memory hooks. Each pair is
-/// `(event-name-in-.poolside-settings, POSIX hook-script-filename)`.
-///
-/// Pool's hook vocabulary uses Claude-shaped PascalCase names but is exactly
-/// these five events (verified against Poolside CLI v1.0.16, hooks api 1.0):
-/// no `SessionEnd`, no `PreCompact`, no subagent events. `Stop` is a turn
-/// boundary, not a session end — `ai-memory finalize-session --agent pool`
-/// is the close path. Adding a hook event means updating this list AND
-/// adding the matching `.sh` and `.ps1` files under `hooks/pool/`; the
-/// install-hooks parity test fails if the bundle drifts.
-pub(crate) const POOL_EVENTS: [(&str, &str); 5] = [
-    ("SessionStart", "session-start.sh"),
-    ("UserPromptSubmit", "user-prompt-submit.sh"),
-    ("PreToolUse", "pre-tool-use.sh"),
-    ("PostToolUse", "post-tool-use.sh"),
-    ("Stop", "stop.sh"),
-];
-
-/// Format an `Authorization: Bearer <token>` header value, or `None`
 /// when no token is supplied. Used by every MCP client renderer in
 /// `install-mcp` and every hook-config renderer that wants to
 /// embed an auth token.
@@ -373,100 +278,6 @@ fn build_claude_code_payload_with_data_dir_for_platform(
     )
 }
 
-/// Grok Build CLI hook payload for docker/setup-agent script snippets.
-/// Grok shares Claude Code's JSON shape and event vocabulary, but uses
-/// its own script bundle so script fallback keeps `agent=grok` and never
-/// destructively fetches handoffs on SessionStart.
-#[must_use]
-pub(crate) fn build_grok_payload(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-) -> serde_json::Value {
-    build_hook_payload_for_platform(
-        &CLAUDE_CODE_EVENTS,
-        emit_root,
-        server_url,
-        auth_token,
-        HookShape::Nested,
-        HookCommandContext::new(
-            HookCommandPlatform::for_bash_script_runner(),
-            "grok",
-            None,
-            None,
-        ),
-    )
-}
-
-/// Zero's hook events → ai-memory event names (issue #156). Zero has no
-/// user-prompt or pre-compact equivalents; its `specialistStart`/`Stop`
-/// map onto the subagent events the router already tracks for Claude Code.
-pub(crate) const ZERO_EVENTS: [(&str, &str); 6] = [
-    ("sessionStart", "session-start"),
-    ("sessionEnd", "session-end"),
-    ("beforeTool", "pre-tool-use"),
-    ("afterTool", "post-tool-use"),
-    ("specialistStart", "subagent-start"),
-    ("specialistStop", "subagent-stop"),
-];
-
-/// Zero hooks.json config (issue #156): `{"enabled": true, "hooks": [..]}`
-/// with one entry per lifecycle event. Zero executes `command` + `args`
-/// directly (exec form, JSON payload on the hook's stdin) — no shell is
-/// spawned, and our native `ai-memory hook` command reads exactly that
-/// stdin shape, so Zero gets the local spool + OIDC fallback with zero
-/// glue scripts. Entry ids carry the `ai-memory-` prefix so apply/uninstall
-/// can merge around third-party hooks in the same file.
-pub(crate) fn build_zero_hooks_config(
-    server_url: &str,
-    auth_token: Option<&str>,
-    data_dir: Option<&Path>,
-    project_strategy: Option<&str>,
-) -> serde_json::Value {
-    let exe = std::env::current_exe()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "ai-memory".to_string());
-    let hooks: Vec<serde_json::Value> = ZERO_EVENTS
-        .iter()
-        .map(|(zero_event, our_event)| {
-            let mut args: Vec<String> = Vec::new();
-            if let Some(dir) = data_dir {
-                args.push("--data-dir".into());
-                args.push(dir.to_string_lossy().into_owned());
-            }
-            args.extend(
-                [
-                    "hook",
-                    "--event",
-                    our_event,
-                    "--agent",
-                    "zero",
-                    "--server-url",
-                    server_url,
-                ]
-                .map(String::from),
-            );
-            if let Some(token) = auth_token {
-                args.push("--auth-token".into());
-                args.push(token.to_string());
-            }
-            if let Some(strategy) = project_strategy {
-                args.push("--project-strategy".into());
-                args.push(strategy.to_string());
-            }
-            serde_json::json!({
-                "id": format!("ai-memory-{our_event}"),
-                "name": format!("ai-memory {our_event}"),
-                "event": zero_event,
-                "command": exe,
-                "args": args,
-                "enabled": true,
-            })
-        })
-        .collect();
-    serde_json::json!({ "enabled": true, "hooks": hooks })
-}
-
 /// ZCode (z.ai) lifecycle events ai-memory hooks (#512). Each pair is
 /// `(event-name-in-config.json, native `hook --event` value)`.
 ///
@@ -572,160 +383,6 @@ pub(crate) const ZCODE_HOOK_TIMEOUT_MS: u64 = 10_000;
 /// (same reasoning as Kiro v2's `max_output_size`).
 pub(crate) const ZCODE_HOOK_MAX_OUTPUT_BYTES: usize = 64 * 1024;
 
-/// Devin hook payload for docker/setup-agent script snippets.
-/// Devin uses HookShape::Nested (same as Claude Code/Grok) but with
-/// DEVIN_EVENTS (PostCompaction instead of PreCompact, no subagent events).
-#[must_use]
-pub(crate) fn build_devin_payload(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-) -> serde_json::Value {
-    build_hook_payload_for_platform(
-        &DEVIN_EVENTS,
-        emit_root,
-        server_url,
-        auth_token,
-        HookShape::Nested,
-        HookCommandContext::new(
-            HookCommandPlatform::for_bash_script_runner(),
-            "devin",
-            None,
-            None,
-        ),
-    )
-}
-
-/// Grok Build CLI hook payload for apply/render paths. Native commands are the
-/// default; explicit script fallback still points at the Grok script bundle.
-pub(crate) fn build_grok_payload_with_data_dir(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    data_dir: Option<&Path>,
-    project_strategy: Option<&str>,
-) -> serde_json::Value {
-    build_hook_payload_for_platform(
-        &CLAUDE_CODE_EVENTS,
-        emit_root,
-        server_url,
-        auth_token,
-        HookShape::Nested,
-        HookCommandContext::new(
-            HookCommandPlatform::for_bash_runner(),
-            "grok",
-            data_dir,
-            project_strategy,
-        ),
-    )
-}
-
-/// Devin hook payload for apply/render paths. Native commands are the
-/// default; explicit script fallback still points at the Devin script bundle.
-/// Devin uses HookShape::Nested (same as Claude Code/Grok) but with
-/// DEVIN_EVENTS (PostCompaction instead of PreCompact, no subagent events).
-#[must_use]
-pub(crate) fn build_devin_payload_with_data_dir(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    data_dir: Option<&Path>,
-    project_strategy: Option<&str>,
-) -> serde_json::Value {
-    build_hook_payload_for_platform(
-        &DEVIN_EVENTS,
-        emit_root,
-        server_url,
-        auth_token,
-        HookShape::Nested,
-        HookCommandContext::new(
-            HookCommandPlatform::for_bash_runner(),
-            "devin",
-            data_dir,
-            project_strategy,
-        ),
-    )
-}
-
-/// Pool (Poolside Agent CLI) `.poolside/settings.yaml` `hooks:` block for
-/// install-hooks' print path. Pool's hook config is a project-scoped YAML
-/// file at the repo root — there is no user-global hook file for ai-memory
-/// to merge, so the installer renders a ready-to-paste snippet instead of
-/// writing into the user's project checkouts.
-///
-/// One entry per event, shell command string on `command:`, `matcher: "*"`
-/// and a bounded `timeout` per Pool's documented schema. YAML single-quote
-/// escaping (`'` → `''`) keeps the embedded shell quoting intact.
-#[must_use]
-pub(crate) fn build_pool_settings_yaml_with_data_dir(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    data_dir: Option<&Path>,
-    project_strategy: Option<&str>,
-) -> String {
-    build_pool_settings_yaml_for_platform(
-        emit_root,
-        server_url,
-        auth_token,
-        HookCommandContext::new(
-            HookCommandPlatform::for_bash_runner(),
-            "pool",
-            data_dir,
-            project_strategy,
-        ),
-    )
-}
-
-/// Script-fallback variant for `setup-agent` / docker-host snippets: the
-/// copied `.sh` scripts are the artifact, so the commands reference them
-/// rather than a host-local native binary.
-#[must_use]
-pub(crate) fn build_pool_settings_yaml(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-) -> String {
-    build_pool_settings_yaml_for_platform(
-        emit_root,
-        server_url,
-        auth_token,
-        HookCommandContext::new(
-            HookCommandPlatform::for_bash_script_runner(),
-            "pool",
-            None,
-            None,
-        ),
-    )
-}
-
-fn build_pool_settings_yaml_for_platform(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    context: HookCommandContext<'_>,
-) -> String {
-    let mut out = String::from("hooks:\n");
-    for (event, script) in &POOL_EVENTS {
-        let resolved = script_for_platform(script, context.platform);
-        let abs = emit_root.join(resolved.as_ref());
-        let command = hook_command(&abs, server_url, auth_token, context);
-        let stem = script.strip_suffix(".sh").unwrap_or(script);
-        out.push_str(&format!(
-            "  {event}:\n    - name: ai-memory-{stem}\n      matcher: \"*\"\n      command: {}\n      timeout: 20\n",
-            yaml_single_quote(&command)
-        ));
-    }
-    out
-}
-
-/// Emit a YAML single-quoted scalar: wrap in `'…'`, doubling any embedded
-/// `'`. Single-quote style is the only YAML form in which the POSIX shell
-/// quoting inside the hook command survives byte-for-byte.
-fn yaml_single_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "''"))
-}
-
 /// Different agents nest hook entries differently. Two shapes
 /// cover everyone we support:
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -736,438 +393,6 @@ pub(crate) enum HookShape {
     /// Gemini CLI tolerates (but doesn't require) a sibling
     /// `sequential` key at the outer level — we don't set it.
     Nested,
-    /// Command Code's nested handler shape without an outer matcher. Its
-    /// stable hook schema treats omission as "all tools" and does not fire
-    /// SessionStart/Stop when a matcher is present.
-    NestedWithoutMatcher,
-    /// Cursor: `"e": [ { "type":"command", "command":"...",
-    /// "matcher":"" } ]` (no inner `hooks` array). Cursor's
-    /// `hooks.json` also requires a sibling `version: 1` key at
-    /// the top level — handled by the caller's apply path.
-    Flat,
-}
-
-/// One hook profile = (event vocabulary, JSON shape). Each agent
-/// gets its own constant so the install path is purely data-
-/// driven: pick the profile, build the payload, write the file.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct HookProfile {
-    /// `(EventName, script_basename)` tuples in the order the
-    /// agent surfaces them. Event names are case-sensitive and
-    /// agent-specific — Claude Code uses `SessionStart` while
-    /// Cursor uses `sessionStart`. The POSIX script filename resolves
-    /// against `hooks/<agent-dir>/`; Windows rendering rewrites the
-    /// `.sh` suffix to `.ps1`.
-    pub events: &'static [(&'static str, &'static str)],
-    /// JSON shape the file uses.
-    pub shape: HookShape,
-}
-
-/// Codex's hook-event vocabulary (per the openai/codex source —
-/// see `codex-rs/config/src/hook_config.rs`). Same nested shape as
-/// Claude Code. `SessionEnd` shipped in Codex CLI 0.145.0 (openai/codex
-/// PR #33895, "Add SessionEnd hooks for thread teardown"); it is a
-/// root-session-only event that runs synchronously during thread
-/// teardown. Codex still has no `SubagentStart`/`SubagentStop` in a
-/// first-party-supported form here, so those stay Claude-Code-only.
-pub(crate) const CODEX_EVENTS: [(&str, &str); 7] = [
-    ("SessionStart", "session-start.sh"),
-    ("UserPromptSubmit", "user-prompt-submit.sh"),
-    ("PreToolUse", "pre-tool-use.sh"),
-    ("PostToolUse", "post-tool-use.sh"),
-    ("PreCompact", "pre-compact.sh"),
-    ("Stop", "stop.sh"),
-    ("SessionEnd", "session-end.sh"),
-];
-
-/// Command Code's stable shell-hook vocabulary. Mods expose more lifecycle
-/// events but remain experimental, so the first-party integration uses only
-/// these documented stable boundaries.
-pub(crate) const COMMAND_CODE_EVENTS: [(&str, &str); 4] = [
-    ("SessionStart", "session-start.sh"),
-    ("PreToolUse", "pre-tool-use.sh"),
-    ("PostToolUse", "post-tool-use.sh"),
-    ("Stop", "stop.sh"),
-];
-
-/// Cursor's hook-event vocabulary (per
-/// <https://cursor.com/docs/agent/hooks>). camelCase event names
-/// and a FLAT JSON shape (no inner `hooks: [...]` wrapper).
-/// `beforeSubmitPrompt` maps to ai-memory's `user-prompt-submit`
-/// concept. Cursor has no `userPromptSubmit` event.
-pub(crate) const CURSOR_EVENTS: [(&str, &str); 8] = [
-    ("sessionStart", "session-start.sh"),
-    ("sessionEnd", "session-end.sh"),
-    ("beforeSubmitPrompt", "user-prompt-submit.sh"),
-    ("preToolUse", "pre-tool-use.sh"),
-    ("postToolUse", "post-tool-use.sh"),
-    ("postToolUseFailure", "post-tool-use.sh"),
-    ("preCompact", "pre-compact.sh"),
-    ("stop", "stop.sh"),
-];
-
-/// Gemini CLI's hook-event vocabulary (per
-/// <https://geminicli.com/docs/hooks/reference>). Event names use
-/// PascalCase. The vocab DIFFERS from Claude Code's:
-///   - `BeforeTool` / `AfterTool` instead of `PreToolUse` / `PostToolUse`
-///   - `PreCompress` instead of `PreCompact`
-///   - No `UserPromptSubmit` equivalent (skipped)
-///   - No `Stop` event (SessionEnd covers it)
-pub(crate) const GEMINI_EVENTS: [(&str, &str); 5] = [
-    ("SessionStart", "session-start.sh"),
-    ("SessionEnd", "session-end.sh"),
-    ("BeforeTool", "pre-tool-use.sh"),
-    ("AfterTool", "post-tool-use.sh"),
-    ("PreCompress", "pre-compact.sh"),
-];
-
-/// Per-agent profile constants. Add a new agent by adding one of
-/// these + a script-dir name + a config-file path resolver — the
-/// payload-build path picks up the rest from `shape`.
-pub(crate) const CODEX_PROFILE: HookProfile = HookProfile {
-    events: &CODEX_EVENTS,
-    shape: HookShape::Nested,
-};
-pub(crate) const COMMAND_CODE_PROFILE: HookProfile = HookProfile {
-    events: &COMMAND_CODE_EVENTS,
-    shape: HookShape::NestedWithoutMatcher,
-};
-pub(crate) const CURSOR_PROFILE: HookProfile = HookProfile {
-    events: &CURSOR_EVENTS,
-    shape: HookShape::Flat,
-};
-pub(crate) const GEMINI_PROFILE: HookProfile = HookProfile {
-    events: &GEMINI_EVENTS,
-    shape: HookShape::Nested,
-};
-
-/// Antigravity CLI (`agy`) hook-event vocabulary (per
-/// <https://antigravity.google/docs/hooks>). Named-groups format
-/// at the top level; events inside each group.
-/// Tool events use nested shape (matcher + hooks), lifecycle
-/// events use flat shape (direct handler list).
-pub(crate) const ANTIGRAVITY_TOOL_EVENTS: [(&str, &str); 2] = [
-    ("PreToolUse", "pre-tool-use.sh"),
-    ("PostToolUse", "post-tool-use.sh"),
-];
-
-pub(crate) const ANTIGRAVITY_LIFECYCLE_EVENTS: [(&str, &str); 2] =
-    [("PreInvocation", "session-start.sh"), ("Stop", "stop.sh")];
-
-/// Build the Antigravity CLI (`agy`) `hooks.json` payload.
-///
-/// Antigravity CLI uses a named-groups format where the top level
-/// maps hook-group names to their event configurations. Each group
-/// can contain any subset of the supported events. Tool events
-/// (`PreToolUse`, `PostToolUse`) use the nested shape with matcher;
-/// lifecycle events (`PreInvocation`, `Stop`) use a flat handler
-/// list where matcher is ignored.
-///
-/// The output is `{ "ai-memory": { <events> } }`.
-pub(crate) fn build_antigravity_payload_with_data_dir(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    data_dir: Option<&Path>,
-    project_strategy: Option<&str>,
-) -> serde_json::Value {
-    build_antigravity_payload_for_platform(
-        emit_root,
-        server_url,
-        auth_token,
-        HookCommandPlatform::current(),
-        "antigravity-cli",
-        data_dir,
-        project_strategy,
-    )
-}
-
-fn build_antigravity_payload_for_platform(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    platform: HookCommandPlatform,
-    agent: &str,
-    data_dir: Option<&Path>,
-    project_strategy: Option<&str>,
-) -> serde_json::Value {
-    let mut group = serde_json::Map::new();
-
-    // Tool events: nested shape (matcher + inner hooks array)
-    for (event, script) in &ANTIGRAVITY_TOOL_EVENTS {
-        let s = script_for_platform(script, platform);
-        let abs = emit_root.join(s.as_ref());
-        let handler = hook_handler_value(hook_handler_spec(
-            &abs,
-            server_url,
-            auth_token,
-            HookCommandContext::new(platform, agent, data_dir, project_strategy),
-            HookShape::Nested,
-        ));
-        group.insert(
-            (*event).to_string(),
-            json!([{
-                "matcher": "",
-                "hooks": [handler],
-            }]),
-        );
-    }
-
-    // Lifecycle events: flat shape (direct handler list, no matcher)
-    for (event, script) in &ANTIGRAVITY_LIFECYCLE_EVENTS {
-        let s = script_for_platform(script, platform);
-        let abs = emit_root.join(s.as_ref());
-        let handler = hook_handler_value(hook_handler_spec(
-            &abs,
-            server_url,
-            auth_token,
-            HookCommandContext::new(platform, agent, data_dir, project_strategy),
-            HookShape::Flat,
-        ));
-        group.insert((*event).to_string(), Value::Array(vec![handler]));
-    }
-
-    json!({ "ai-memory": group })
-}
-
-/// Build a hook payload for `profile`. The output is always
-/// `{ "hooks": { "<EventName>": <profile-specific-array> } }`; the
-/// caller is responsible for any sibling top-level keys (e.g.
-/// Cursor's `"version": 1`).
-#[cfg(test)]
-pub(crate) fn build_profile_payload(
-    profile: &HookProfile,
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-) -> serde_json::Value {
-    build_profile_payload_for_agent(
-        profile,
-        emit_root,
-        server_url,
-        auth_token,
-        "claude-code",
-        None,
-        None,
-    )
-}
-
-pub(crate) fn build_profile_payload_for_agent(
-    profile: &HookProfile,
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    agent: &str,
-    data_dir: Option<&Path>,
-    project_strategy: Option<&str>,
-) -> serde_json::Value {
-    build_hook_payload(
-        profile.events,
-        emit_root,
-        server_url,
-        auth_token,
-        profile.shape,
-        HookCommandContext::new(
-            HookCommandPlatform::current(),
-            agent,
-            data_dir,
-            project_strategy,
-        ),
-    )
-}
-
-#[cfg(test)]
-pub(crate) fn build_profile_script_payload_for_test(
-    profile: &HookProfile,
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    agent: &str,
-    data_dir: Option<&Path>,
-    project_strategy: Option<&str>,
-) -> serde_json::Value {
-    build_hook_payload(
-        profile.events,
-        emit_root,
-        server_url,
-        auth_token,
-        profile.shape,
-        HookCommandContext::new(
-            HookCommandPlatform::Posix,
-            agent,
-            data_dir,
-            project_strategy,
-        ),
-    )
-}
-
-fn build_hook_payload(
-    events: &[(&str, &str)],
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    shape: HookShape,
-    context: HookCommandContext<'_>,
-) -> serde_json::Value {
-    build_hook_payload_for_platform(events, emit_root, server_url, auth_token, shape, context)
-}
-
-/// Build the `(event, command)` pairs behind Kimi Code's `[[hooks]]`
-/// TOML entries. Kimi Code hook entries accept only `event` / `matcher`
-/// / `command` / `timeout` — any other key makes the whole config.toml
-/// fail to load — so callers emit exactly `event` + `command` and leave
-/// the rest at Kimi Code's defaults (no `matcher` = match everything;
-/// no `timeout` = 30s). Commands come from the shared `hook_command`
-/// helper for the current platform: native `ai-memory hook --event …`
-/// invocations by default, or the staged script bundle (`.sh` on
-/// POSIX, `.ps1` on Windows) on the compatibility platforms.
-pub(crate) fn kimi_code_hook_commands(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    data_dir: Option<&Path>,
-    project_strategy: Option<&str>,
-) -> Vec<(&'static str, String)> {
-    kimi_code_hook_commands_for_platform(
-        emit_root,
-        server_url,
-        auth_token,
-        HookCommandPlatform::current(),
-        data_dir,
-        project_strategy,
-    )
-}
-
-fn kimi_code_hook_commands_for_platform(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    platform: HookCommandPlatform,
-    data_dir: Option<&Path>,
-    project_strategy: Option<&str>,
-) -> Vec<(&'static str, String)> {
-    KIMI_CODE_EVENTS
-        .iter()
-        .map(|(event, script)| {
-            let script = script_for_platform(script, platform);
-            let abs = emit_root.join(script.as_ref());
-            let command = hook_command(
-                &abs,
-                server_url,
-                auth_token,
-                HookCommandContext::new(platform, "kimi-code", data_dir, project_strategy),
-            );
-            (*event, command)
-        })
-        .collect()
-}
-
-/// Build the `hooks` map for a Kiro CLI v2-engine agent config. Entry
-/// shape per the shipping `Hook` struct (aws/amazon-q-developer-cli
-/// `crates/chat-cli/src/cli/agent/hook.rs`): a flat
-/// `{ "command": … }` object per trigger. Two deliberate omissions:
-///
-/// - no `matcher` key: in Kiro v2 an *absent* matcher applies the hook
-///   to every tool, while an empty-string matcher is a tool-name
-///   pattern that matches nothing — the opposite of Claude Code's
-///   empty-matcher convention, so `HookShape::Flat` must not be reused;
-/// - no `type` key: the v2 `Hook` struct has no such field.
-///
-/// `agentSpawn` sets `max_output_size` above the 10 KiB default so a
-/// fetched handoff + compiled project brief is not truncated mid-JSON
-/// before Kiro adds it to the agent context.
-pub(crate) fn build_kiro_cli_v2_hooks_value(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    data_dir: Option<&Path>,
-    project_strategy: Option<&str>,
-) -> serde_json::Map<String, Value> {
-    build_kiro_cli_v2_hooks_value_for_platform(
-        emit_root,
-        server_url,
-        auth_token,
-        HookCommandPlatform::current(),
-        data_dir,
-        project_strategy,
-    )
-}
-
-/// Session-start context injection ceiling for Kiro v2 (`max_output_size`).
-/// Kiro truncates hook stdout beyond this; 64 KiB comfortably covers a
-/// handoff plus a `[briefing]`-budgeted brief.
-pub(crate) const KIRO_CLI_V2_SESSION_START_MAX_OUTPUT: usize = 64 * 1024;
-
-fn build_kiro_cli_v2_hooks_value_for_platform(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    platform: HookCommandPlatform,
-    data_dir: Option<&Path>,
-    project_strategy: Option<&str>,
-) -> serde_json::Map<String, Value> {
-    let mut hooks = serde_json::Map::new();
-    for (event, script) in KIRO_CLI_V2_EVENTS {
-        let script = script_for_platform(script, platform);
-        let abs = emit_root.join(script.as_ref());
-        let command = hook_command(
-            &abs,
-            server_url,
-            auth_token,
-            HookCommandContext::new(platform, "kiro-cli", data_dir, project_strategy),
-        );
-        let mut entry = serde_json::Map::new();
-        entry.insert("command".to_string(), Value::String(command));
-        if event == "agentSpawn" {
-            entry.insert(
-                "max_output_size".to_string(),
-                Value::from(KIRO_CLI_V2_SESSION_START_MAX_OUTPUT),
-            );
-        }
-        hooks.insert(event.to_string(), json!([Value::Object(entry)]));
-    }
-    hooks
-}
-
-/// Build Kiro CLI v3's standalone `{ "version": "v1", "hooks": [...] }`
-/// registration document. Each entry is deliberately named so apply and
-/// uninstall can prove ownership using both the name and command signature.
-pub(crate) fn build_kiro_cli_v3_hooks_value(
-    emit_root: &Path,
-    server_url: &str,
-    auth_token: Option<&str>,
-    data_dir: Option<&Path>,
-    project_strategy: Option<&str>,
-) -> Value {
-    let platform = HookCommandPlatform::current();
-    let hooks = KIRO_CLI_V3_EVENTS
-        .iter()
-        .map(|(trigger, script)| {
-            let platform_script = script_for_platform(script, platform);
-            let command = hook_command(
-                &emit_root.join(platform_script.as_ref()),
-                server_url,
-                auth_token,
-                HookCommandContext::new(platform, "kiro-cli", data_dir, project_strategy),
-            );
-            let name = script.strip_suffix(".sh").map_or_else(
-                || format!("ai-memory-{script}"),
-                |stem| format!("ai-memory-{stem}"),
-            );
-            let timeout = if *trigger == "SessionStart" { 5 } else { 1 };
-            json!({
-                "name": name,
-                "trigger": trigger,
-                "action": {
-                    "type": "command",
-                    "command": command,
-                },
-                "timeout": timeout,
-                "enabled": true,
-            })
-        })
-        .collect::<Vec<_>>();
-    json!({"version": "v1", "hooks": hooks})
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1198,7 +423,7 @@ pub(crate) enum HookCommandPlatform {
 }
 
 #[derive(Clone, Copy)]
-struct HookCommandContext<'a> {
+pub(crate) struct HookCommandContext<'a> {
     platform: HookCommandPlatform,
     agent: &'a str,
     data_dir: Option<&'a Path>,
@@ -1243,9 +468,6 @@ impl<'a> HookCommandContext<'a> {
     }
 }
 
-/// Bake `--capture-assistant` onto the native `stop` command only (#196), so the
-/// other events stay byte-identical. Empty for every other event, and for a
-/// context that did not opt in.
 fn native_capture_assistant_arg(context: HookCommandContext<'_>, event: &str) -> &'static str {
     if context.capture_assistant && event == "stop" {
         " --capture-assistant"
@@ -1354,16 +576,11 @@ fn build_hook_payload_for_platform(
         // Empty matcher = fire on every event of this kind. Right
         // for ai-memory's capture hooks (every prompt, every tool
         // call, every session boundary).
-        let entry = match shape {
-            HookShape::Nested => json!([{
-                "matcher": "",
-                "hooks": [handler],
-            }]),
-            HookShape::NestedWithoutMatcher => json!([{
-                "hooks": [handler],
-            }]),
-            HookShape::Flat => Value::Array(vec![hook_handler_with_matcher(handler)]),
-        };
+        let _ = shape;
+        let entry = json!([{
+            "matcher": "",
+            "hooks": [handler],
+        }]);
         hooks_block.insert((*event).to_string(), entry);
     }
     json!({ "hooks": hooks_block })
@@ -1405,13 +622,6 @@ fn hook_handler_value(spec: HookHandlerSpec) -> Value {
     }
 }
 
-fn hook_handler_with_matcher(mut handler: Value) -> Value {
-    if let Some(obj) = handler.as_object_mut() {
-        obj.insert("matcher".to_string(), Value::String(String::new()));
-    }
-    handler
-}
-
 fn script_for_platform(script: &str, platform: HookCommandPlatform) -> Cow<'_, str> {
     match platform {
         HookCommandPlatform::Posix
@@ -1423,10 +633,6 @@ fn script_for_platform(script: &str, platform: HookCommandPlatform) -> Cow<'_, s
             None => Cow::Borrowed(script),
         },
     }
-}
-
-pub(crate) fn hook_script_for_current_platform(script: &str) -> Cow<'_, str> {
-    script_for_platform(script, HookCommandPlatform::current())
 }
 
 pub(crate) fn hook_script_for_claude_code(script: &str) -> Cow<'_, str> {
@@ -2246,98 +1452,22 @@ check(markedButEmpty.disposition === "keep", "allowlist-marker-present-empty-cap
     }
 
     #[test]
-    fn grok_native_payload_uses_grok_agent() {
-        let root = PathBuf::from("/host/hooks/grok");
+    fn zcode_native_payload_uses_zcode_agent() {
+        let root = PathBuf::from("/host/hooks/zcode");
         let v = build_hook_payload_for_platform(
             &CLAUDE_CODE_EVENTS,
             &root,
             "http://localhost:49374",
             None,
             HookShape::Nested,
-            HookCommandContext::new(HookCommandPlatform::PosixNative, "grok", None, None),
+            HookCommandContext::new(HookCommandPlatform::PosixNative, "zcode", None, None),
         );
         let command = v
             .pointer("/hooks/SessionStart/0/hooks/0/command")
             .and_then(|s| s.as_str())
             .unwrap();
-        assert!(command.contains("--agent grok"), "{command}");
+        assert!(command.contains("--agent zcode"), "{command}");
         assert!(!command.contains("claude-code"), "{command}");
-    }
-
-    #[test]
-    fn grok_script_payload_uses_grok_bundle() {
-        let root = PathBuf::from("/host/hooks/grok");
-        let v = build_hook_payload_for_platform(
-            &CLAUDE_CODE_EVENTS,
-            &root,
-            "http://localhost:49374",
-            None,
-            HookShape::Nested,
-            HookCommandContext::new(HookCommandPlatform::Posix, "grok", None, None),
-        );
-        let command = v
-            .pointer("/hooks/SessionStart/0/hooks/0/command")
-            .and_then(|s| s.as_str())
-            .unwrap();
-        let normalized = command.replace('\\', "/");
-        assert!(
-            normalized.contains("/host/hooks/grok/session-start.sh"),
-            "{command}"
-        );
-        assert!(!command.contains("claude-code"), "{command}");
-    }
-
-    #[test]
-    fn devin_payload_has_all_events() {
-        let root = PathBuf::from("/host/hooks/devin");
-        let v = build_devin_payload(&root, "http://localhost:49374", None);
-        let hooks = v.get("hooks").and_then(|h| h.as_object()).unwrap();
-        assert_eq!(hooks.len(), DEVIN_EVENTS.len());
-        for (event, _) in DEVIN_EVENTS {
-            assert!(hooks.contains_key(event), "missing event {event}");
-        }
-    }
-
-    #[test]
-    fn devin_native_payload_uses_devin_agent() {
-        let root = PathBuf::from("/host/hooks/devin");
-        let v = build_hook_payload_for_platform(
-            &DEVIN_EVENTS,
-            &root,
-            "http://localhost:49374",
-            None,
-            HookShape::Nested,
-            HookCommandContext::new(HookCommandPlatform::PosixNative, "devin", None, None),
-        );
-        let command = v
-            .pointer("/hooks/SessionStart/0/hooks/0/command")
-            .and_then(|s| s.as_str())
-            .unwrap();
-        assert!(command.contains("--agent devin"), "{command}");
-        assert!(!command.contains("grok"), "{command}");
-    }
-
-    #[test]
-    fn devin_script_payload_uses_devin_bundle() {
-        let root = PathBuf::from("/host/hooks/devin");
-        let v = build_hook_payload_for_platform(
-            &DEVIN_EVENTS,
-            &root,
-            "http://localhost:49374",
-            None,
-            HookShape::Nested,
-            HookCommandContext::new(HookCommandPlatform::Posix, "devin", None, None),
-        );
-        let command = v
-            .pointer("/hooks/SessionStart/0/hooks/0/command")
-            .and_then(|s| s.as_str())
-            .unwrap();
-        let normalized = command.replace('\\', "/");
-        assert!(
-            normalized.contains("/host/hooks/devin/session-start.sh"),
-            "{command}"
-        );
-        assert!(!command.contains("grok"), "{command}");
     }
 
     #[test]
@@ -2375,115 +1505,6 @@ check(markedButEmpty.disposition === "keep", "allowlist-marker-present-empty-cap
     /// outer level — which made Claude Code refuse to load
     /// settings.json with "hooks: Expected array, but received
     /// undefined" on every event.
-    #[test]
-    fn cursor_payload_uses_flat_shape() {
-        // Flat shape: no inner `hooks: [...]` array; each event
-        // maps to an array of {type, command, matcher} entries.
-        let root = PathBuf::from("/host/hooks/cursor");
-        let v = build_posix_hook_payload(
-            CURSOR_PROFILE.events,
-            &root,
-            "http://localhost:49374",
-            Some("tok"),
-            CURSOR_PROFILE.shape,
-        );
-        let session_start = v
-            .pointer("/hooks/sessionStart/0")
-            .and_then(|e| e.as_object())
-            .expect("missing /hooks/sessionStart/0");
-        assert_eq!(
-            session_start.get("type").and_then(|t| t.as_str()),
-            Some("command"),
-            "Cursor flat entries put `type` at the outer level"
-        );
-        assert!(
-            session_start.contains_key("command"),
-            "Cursor flat entries put `command` at the outer level"
-        );
-        // No nested hooks array.
-        assert!(
-            !session_start.contains_key("hooks"),
-            "Cursor must NOT use the nested hooks shape — found one: {session_start:?}"
-        );
-        // Auth token still inlined into command.
-        let cmd = session_start
-            .get("command")
-            .and_then(|c| c.as_str())
-            .unwrap();
-        assert!(cmd.contains("AI_MEMORY_AUTH_TOKEN=tok"));
-        // Events are camelCase, not PascalCase.
-        let events: Vec<&str> = v
-            .pointer("/hooks")
-            .and_then(|h| h.as_object())
-            .map(|o| o.keys().map(String::as_str).collect())
-            .unwrap_or_default();
-        assert!(events.contains(&"sessionStart"));
-        assert!(events.contains(&"preToolUse"));
-        assert!(events.contains(&"postToolUseFailure"));
-        assert!(
-            !events.contains(&"SessionStart"),
-            "Cursor uses camelCase, not PascalCase"
-        );
-    }
-
-    #[test]
-    fn gemini_payload_uses_nested_shape_with_gemini_event_names() {
-        // Same nested shape as Claude Code, but DIFFERENT event
-        // names (BeforeTool / AfterTool / PreCompress; no
-        // UserPromptSubmit, no Stop).
-        let root = PathBuf::from("/host/hooks/gemini-cli");
-        let v = build_profile_payload(
-            &GEMINI_PROFILE,
-            &root,
-            "http://localhost:49374",
-            Some("tok"),
-        );
-        let session_start = v
-            .pointer("/hooks/SessionStart/0")
-            .and_then(|e| e.as_object())
-            .expect("missing /hooks/SessionStart/0");
-        // Outer level has matcher + hooks (nested shape).
-        assert!(session_start.contains_key("matcher"));
-        let inner = session_start
-            .get("hooks")
-            .and_then(|h| h.as_array())
-            .unwrap();
-        assert_eq!(inner.len(), 1);
-        let entry = inner[0].as_object().unwrap();
-        assert_eq!(entry.get("type").and_then(|t| t.as_str()), Some("command"));
-        // Event vocab: Gemini-specific names present, Claude Code-
-        // only names absent.
-        let events: Vec<&str> = v
-            .pointer("/hooks")
-            .and_then(|h| h.as_object())
-            .map(|o| o.keys().map(String::as_str).collect())
-            .unwrap_or_default();
-        for expected in [
-            "SessionStart",
-            "SessionEnd",
-            "BeforeTool",
-            "AfterTool",
-            "PreCompress",
-        ] {
-            assert!(
-                events.contains(&expected),
-                "missing Gemini event {expected}"
-            );
-        }
-        for unexpected in [
-            "PreToolUse",
-            "PostToolUse",
-            "UserPromptSubmit",
-            "Stop",
-            "PreCompact",
-        ] {
-            assert!(
-                !events.contains(&unexpected),
-                "Gemini should NOT have CC-only event {unexpected}; got {events:?}"
-            );
-        }
-    }
-
     #[test]
     fn claude_code_payload_uses_matcher_plus_inner_hooks_shape() {
         let root = PathBuf::from("/host/hooks/claude-code");
@@ -2737,12 +1758,8 @@ check(markedButEmpty.disposition === "keep", "allowlist-marker-present-empty-cap
                 shape,
                 HookCommandContext::new(platform, agent, None, None).allow_claude_windows_exec(),
             );
-            match shape {
-                HookShape::Nested | HookShape::NestedWithoutMatcher => {
-                    v.pointer("/hooks/SessionStart/0/hooks/0").unwrap().clone()
-                }
-                HookShape::Flat => v.pointer("/hooks/SessionStart/0").unwrap().clone(),
-            }
+            let _ = shape;
+            v.pointer("/hooks/SessionStart/0/hooks/0").unwrap().clone()
         }
 
         for (platform, agent, shape) in [
@@ -2781,12 +1798,8 @@ check(markedButEmpty.disposition === "keep", "allowlist-marker-present-empty-cap
         );
 
         for (agent, shape) in [
-            ("cursor", HookShape::Flat),
-            ("gemini-cli", HookShape::Flat),
-            ("codex", HookShape::Nested),
-            ("antigravity-cli", HookShape::Flat),
-            ("grok", HookShape::Nested),
-            ("devin", HookShape::Nested),
+            ("opencode", HookShape::Nested),
+            ("zcode", HookShape::Nested),
         ] {
             let handler = handler_for(HookCommandPlatform::WindowsNative, agent, shape);
             assert!(
@@ -2820,22 +1833,6 @@ check(markedButEmpty.disposition === "keep", "allowlist-marker-present-empty-cap
                 .is_none(),
             "unapproved Claude render paths must retain command-string schema: {setup_like}"
         );
-
-        let antigravity = build_antigravity_payload_for_platform(
-            Path::new(r"C:\hooks"),
-            "http://h:49374",
-            Some("tok"),
-            HookCommandPlatform::WindowsNative,
-            "antigravity-cli",
-            None,
-            None,
-        );
-        assert!(
-            antigravity
-                .pointer("/ai-memory/PreInvocation/0/args")
-                .is_none(),
-            "Antigravity must retain command-string schema: {antigravity}"
-        );
     }
 
     /// #611: Antigravity runs its hook `command` string through
@@ -2843,76 +1840,6 @@ check(markedButEmpty.disposition === "keep", "allowlist-marker-present-empty-cap
     /// `"C:\…\ai-memory.exe"` is "not recognized" and crashes the session.
     /// Its Windows command must render UNQUOTED, while other Windows agents
     /// keep the double quotes.
-    #[test]
-    fn antigravity_windows_command_is_unquoted_but_others_keep_quotes() {
-        let ag = build_antigravity_payload_for_platform(
-            Path::new(r"C:\Users\me\.local\bin"),
-            "https://memory.example.com",
-            Some("tok"),
-            HookCommandPlatform::WindowsNative,
-            "antigravity-cli",
-            Some(Path::new(r"C:\Users\me\AppData\Local\ai-memory")),
-            None,
-        );
-        let cmd = ag
-            .pointer("/ai-memory/PreInvocation/0/command")
-            .and_then(|v| v.as_str())
-            .expect("antigravity command string");
-        assert!(
-            !cmd.contains('"'),
-            "antigravity Windows command must carry no double quotes: {cmd}"
-        );
-        assert!(
-            cmd.contains(r"ai-memory hook --event") || cmd.contains(r"ai-memory.exe hook"),
-            "unexpected antigravity command shape: {cmd}"
-        );
-        assert!(
-            cmd.contains("--data-dir C:\\Users\\me\\AppData\\Local\\ai-memory")
-                && cmd.contains("--server-url https://memory.example.com"),
-            "bare (unquoted) args expected: {cmd}"
-        );
-
-        // Same renderer, a non-antigravity agent identity: the double quotes
-        // stay, so the fix is scoped to antigravity and does not regress the
-        // other Windows JSON-hook agents.
-        let other = build_antigravity_payload_for_platform(
-            Path::new(r"C:\Users\me\.local\bin"),
-            "https://memory.example.com",
-            Some("tok"),
-            HookCommandPlatform::WindowsNative,
-            "grok",
-            Some(Path::new(r"C:\Users\me\AppData\Local\ai-memory")),
-            None,
-        );
-        let other_cmd = other
-            .pointer("/ai-memory/PreInvocation/0/command")
-            .and_then(|v| v.as_str())
-            .expect("command string");
-        assert!(
-            other_cmd.contains('"'),
-            "non-antigravity Windows agents keep their double quotes: {other_cmd}"
-        );
-    }
-
-    #[test]
-    fn command_code_profile_omits_matchers_and_uses_native_agent_identity() {
-        let value = build_hook_payload_for_platform(
-            &COMMAND_CODE_EVENTS,
-            Path::new("/hooks"),
-            "http://memory:49374",
-            None,
-            HookShape::NestedWithoutMatcher,
-            HookCommandContext::new(HookCommandPlatform::PosixNative, "command-code", None, None),
-        );
-
-        for event in ["SessionStart", "PreToolUse", "PostToolUse", "Stop"] {
-            let definition = &value["hooks"][event][0];
-            assert!(definition.get("matcher").is_none(), "event: {event}");
-            let command = definition["hooks"][0]["command"].as_str().unwrap();
-            assert!(command.contains("--agent command-code"), "{command}");
-        }
-    }
-
     #[test]
     fn claude_code_payload_emits_absolute_paths() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -2999,60 +1926,6 @@ check(markedButEmpty.disposition === "keep", "allowlist-marker-present-empty-cap
         );
     }
 
-    #[test]
-    fn antigravity_windows_commands_survive_an_outer_powershell_runner() {
-        let root = PathBuf::from("C:/Users/alice/.local/share/ai-memory/hooks/antigravity-cli");
-        let v = build_antigravity_payload_for_platform(
-            &root,
-            "http://localhost:49374",
-            Some("tok'en"),
-            HookCommandPlatform::Windows,
-            "antigravity-cli",
-            None,
-            Some("repo-root"),
-        );
-
-        for pointer in [
-            "/ai-memory/PreInvocation/0/command",
-            "/ai-memory/PreToolUse/0/hooks/0/command",
-        ] {
-            let command = v.pointer(pointer).and_then(Value::as_str).unwrap();
-            assert!(
-                command.contains(" -EncodedCommand "),
-                "{pointer}: {command}"
-            );
-            assert!(
-                command.contains(" -OutputFormat Text "),
-                "{pointer}: nested PowerShell output must stay textual: {command}"
-            );
-            assert!(
-                !command.contains("$env:")
-                    && !command.contains("localhost:49374")
-                    && !command.contains(".ps1"),
-                "{pointer}: outer runner must see only an opaque program: {command}"
-            );
-
-            let program = decode_powershell_encoded_command(command);
-            assert!(
-                program.starts_with("$ProgressPreference='SilentlyContinue';"),
-                "{pointer}: {program}"
-            );
-            assert!(
-                program.contains("$env:AI_MEMORY_HOOK_URL='http://localhost:49374'"),
-                "{pointer}: {program}"
-            );
-            assert!(
-                program.contains("$env:AI_MEMORY_AUTH_TOKEN='tok''en'"),
-                "{pointer}: {program}"
-            );
-            assert!(
-                program.contains("$env:AI_MEMORY_PROJECT_STRATEGY='repo-root'"),
-                "{pointer}: {program}"
-            );
-            assert!(program.contains(".ps1"), "{pointer}: {program}");
-        }
-    }
-
     #[cfg(windows)]
     #[test]
     fn windows_encoded_hook_executes_through_an_outer_powershell() {
@@ -3108,136 +1981,6 @@ $payload = [Console]::In.ReadToEnd()
             String::from_utf8_lossy(&output.stderr)
         );
         assert_eq!(output.stdout, br#"{"hook":"ok"}"#);
-    }
-
-    #[test]
-    fn antigravity_payload_uses_named_groups_with_mixed_shape() {
-        let root = PathBuf::from("/host/hooks/antigravity-cli");
-        let v = build_antigravity_payload_for_platform(
-            &root,
-            "http://localhost:49374",
-            Some("tok"),
-            HookCommandPlatform::Posix,
-            "antigravity-cli",
-            None,
-            None,
-        );
-
-        // Top-level key is the named group "ai-memory", not "hooks"
-        let group = v
-            .get("ai-memory")
-            .and_then(|g| g.as_object())
-            .expect("missing top-level 'ai-memory' named group");
-        assert!(
-            !v.as_object().unwrap().contains_key("hooks"),
-            "Antigravity uses named groups, not a 'hooks' wrapper"
-        );
-
-        // Tool events: nested shape (matcher + hooks array)
-        let pre_tool = group
-            .get("PreToolUse")
-            .and_then(|e| e.as_array())
-            .expect("missing PreToolUse");
-        let outer = pre_tool[0].as_object().unwrap();
-        assert!(outer.contains_key("matcher"));
-        let inner = outer.get("hooks").and_then(|h| h.as_array()).unwrap();
-        assert_eq!(inner.len(), 1);
-        let entry = inner[0].as_object().unwrap();
-        assert_eq!(entry.get("type").and_then(|t| t.as_str()), Some("command"));
-
-        // Lifecycle events: flat shape (no matcher, direct handler list)
-        let pre_invocation = group
-            .get("PreInvocation")
-            .and_then(|e| e.as_array())
-            .expect("missing PreInvocation");
-        let handler = pre_invocation[0].as_object().unwrap();
-        assert!(
-            !handler.contains_key("matcher"),
-            "PreInvocation should not have matcher (flat shape)"
-        );
-        assert!(
-            !handler.contains_key("hooks"),
-            "PreInvocation should not have inner hooks array (flat shape)"
-        );
-        assert_eq!(
-            handler.get("type").and_then(|t| t.as_str()),
-            Some("command")
-        );
-
-        // Auth token inlined into commands
-        let cmd = handler.get("command").and_then(|c| c.as_str()).unwrap();
-        assert!(cmd.contains("AI_MEMORY_AUTH_TOKEN=tok"));
-
-        let stop = group
-            .get("Stop")
-            .and_then(|e| e.as_array())
-            .expect("missing Stop");
-        let stop_cmd = stop[0]
-            .get("command")
-            .and_then(|c| c.as_str())
-            .expect("Stop command missing");
-        assert!(
-            stop_cmd.contains("stop.sh"),
-            "Stop must record a stop observation, not synthesize session-end handoffs: {stop_cmd}"
-        );
-
-        // All expected events present
-        for expected in ["PreToolUse", "PostToolUse", "PreInvocation", "Stop"] {
-            assert!(
-                group.contains_key(expected),
-                "missing Antigravity event {expected}"
-            );
-        }
-    }
-
-    #[test]
-    fn kimi_code_commands_cover_all_events_with_script_paths() {
-        let root = PathBuf::from("/host/hooks/kimi-code");
-        let commands = kimi_code_hook_commands_for_platform(
-            &root,
-            "http://localhost:49374",
-            Some("tok"),
-            HookCommandPlatform::Posix,
-            None,
-            None,
-        );
-        assert_eq!(commands.len(), KIMI_CODE_EVENTS.len());
-        let events: Vec<&str> = commands.iter().map(|(event, _)| *event).collect();
-        for (event, script) in KIMI_CODE_EVENTS {
-            assert!(events.contains(&event), "missing Kimi Code event {event}");
-            let (_, cmd) = commands.iter().find(|(e, _)| *e == event).unwrap();
-            let expected = root.join(script);
-            assert!(
-                cmd.contains(expected.to_string_lossy().as_ref()),
-                "{event}: command must point at the staged script: {cmd}"
-            );
-        }
-        let (_, session_start) = &commands[0];
-        assert!(
-            session_start.contains("AI_MEMORY_HOOK_URL=http://localhost:49374"),
-            "{session_start}"
-        );
-        assert!(
-            session_start.contains("AI_MEMORY_AUTH_TOKEN=tok"),
-            "{session_start}"
-        );
-    }
-
-    #[test]
-    fn kimi_code_commands_windows_use_ps1_scripts() {
-        let root = PathBuf::from(r"C:\hooks\kimi-code");
-        let commands = kimi_code_hook_commands_for_platform(
-            &root,
-            "http://h:49374",
-            None,
-            HookCommandPlatform::Windows,
-            None,
-            None,
-        );
-        let (_, cmd) = &commands[0];
-        let program = decode_powershell_encoded_command(cmd);
-        assert!(program.contains("session-start.ps1"), "{program}");
-        assert!(!program.contains("session-start.sh"), "{program}");
     }
 
     #[test]

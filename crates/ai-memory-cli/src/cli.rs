@@ -262,41 +262,12 @@ pub enum RunHarnessChoice {
     /// `parse_run_harness_choice`.
     #[value(alias = "claude-code")]
     Claude,
-    /// OpenAI Codex CLI.
-    Codex,
     /// OpenCode.
     #[value(name = "opencode", alias = "open-code")]
     OpenCode,
     /// OpenCode 2.0 beta (`opencode2` binary, side-by-side with v1).
     #[value(name = "opencode2", alias = "opencode-v2", alias = "open-code2")]
     OpenCode2,
-    /// Pi coding agent.
-    Pi,
-    /// Charmbracelet Crush.
-    Crush,
-    /// Oh My Pi.
-    #[value(alias = "oh-my-pi")]
-    Omp,
-    /// Moonshot AI Kimi Code.
-    #[value(name = "kimi", alias = "kimi-code", alias = "kimi-cli")]
-    Kimi,
-    /// Command Code CLI.
-    #[value(
-        name = "command-code",
-        alias = "commandcode",
-        alias = "cmdc",
-        alias = "cmd"
-    )]
-    CommandCode,
-    /// Amazon Kiro CLI (v2 engine).
-    #[value(name = "kiro", alias = "kiro-cli")]
-    Kiro,
-    /// Grok Build CLI (xAI).
-    #[value(alias = "grok-build")]
-    Grok,
-    /// Google Antigravity CLI (`agy`).
-    #[value(name = "antigravity", alias = "antigravity-cli", alias = "agy")]
-    Antigravity,
 }
 
 /// Parses the `run` harness positional, additionally wildcarding every
@@ -1088,10 +1059,6 @@ pub enum InstallSkillsAgent {
     ClaudeCode,
     /// Cross-agent `.agents/skills` directory.
     Agents,
-    /// Devin's `.devin/skills` directory.
-    Devin,
-    /// Grok Build CLI's `.grok/skills` directory.
-    Grok,
     /// Install into both Claude Code and `.agents` skill directories.
     Both,
 }
@@ -1413,12 +1380,6 @@ pub struct ReindexArgs {}
 pub enum AgentChoice {
     /// Anthropic Claude Code.
     ClaudeCode,
-    /// OpenAI Codex CLI.
-    Codex,
-    /// Cursor IDE agent — JSON-config hooks in `~/.cursor/hooks.json`.
-    Cursor,
-    /// Google Gemini CLI — JSON-config hooks in `~/.gemini/settings.json`.
-    GeminiCli,
     /// OpenCode (open-source coding agent) — TypeScript plugin hooks
     /// under `~/.config/opencode/plugins/`. `--apply` writes the plugin
     /// file directly; restart OpenCode for it to load.
@@ -1437,67 +1398,6 @@ pub enum AgentChoice {
     /// dir, session store, and agent kind.
     #[value(name = "opencode2", alias = "opencode-v2", alias = "open-code2")]
     OpenCode2,
-    /// Real Pi coding agent. The generated TypeScript extension provides
-    /// lifecycle capture and bridges ai-memory's HTTP MCP tools into Pi.
-    Pi,
-    /// Oh My Pi (`omp`) — TypeScript extension
-    /// under `~/.omp/agent/extensions/`. `--apply` writes the extension
-    /// file directly; restart `omp` for it to load.
-    #[value(alias = "oh-my-pi")]
-    Omp,
-    /// OpenClaw personal AI gateway — native plugin package with
-    /// session/tool/compaction hooks.
-    Openclaw,
-    /// Google Antigravity CLI (`agy`) — JSON-config hooks in
-    /// `~/.gemini/config/hooks.json`.
-    #[value(alias = "antigravity", alias = "agy")]
-    AntigravityCli,
-    /// xAI Grok Build CLI — JSON-config hooks in
-    /// `~/.grok/hooks/ai-memory.json`. Native `ai-memory hook --event`
-    /// integration using Grok-specific hook scripts. NOTE: Grok ignores
-    /// hook stdout on `SessionStart`, so
-    /// capture works but handoff injection does not — recover the prior
-    /// session's handoff via the MCP `memory_handoff_accept` tool.
-    Grok,
-    /// Zero coding agent (Gitlawb/zero) — JSON-config lifecycle hooks in
-    /// `$XDG_CONFIG_HOME/zero/hooks.json` (exec-form `command` + `args`,
-    /// so ai-memory's native `hook` command runs with no shell). NOTE:
-    /// Zero discards `sessionStart` hook stdout, so capture works but
-    /// handoff injection does not — recover the prior session's handoff
-    /// via the MCP `memory_handoff_accept` tool.
-    Zero,
-    /// Devin CLI — JSON-config hooks in
-    /// `~/.devin/hooks.v1.json` or `~/.devin/config.json` hooks key.
-    /// Native `ai-memory hook --event` integration using Devin-specific
-    /// hook scripts. Devin consumes the handoff via
-    /// `hookSpecificOutput.additionalContext` on `SessionStart`.
-    Devin,
-    /// Kimi Code CLI (Moonshot AI).
-    #[value(alias = "kimi")]
-    KimiCode,
-    /// Kiro CLI (AWS), v2 agent engine — camelCase lifecycle hooks embedded
-    /// in agent configs under `~/.kiro/agents/*.json`.
-    #[value(alias = "kiro")]
-    KiroCli,
-    /// Kiro CLI (AWS), v3 agent engine — PascalCase lifecycle hooks in the
-    /// standalone `$KIRO_HOME/hooks/ai-memory.json` registration file.
-    #[value(alias = "kiro-v3")]
-    KiroCliV3,
-    /// Command Code CLI — stable JSON-config shell hooks in
-    /// `~/.commandcode/settings.json`.
-    #[value(alias = "commandcode", alias = "cmdc", alias = "cmd")]
-    CommandCode,
-    /// Pool (Poolside Agent CLI, `pool`) — project-scoped YAML hooks in
-    /// the repo-root `.poolside/settings.yaml`. ai-memory stages the hook
-    /// scripts and prints a ready-to-paste `hooks:` snippet; it does not
-    /// write project-local files. NOTE: Pool's `SessionStart` stdout
-    /// injection is not demonstrated, so capture works but handoff
-    /// injection does not — recover the prior session's handoff via the
-    /// MCP `memory_handoff_accept` tool, and close sessions with
-    /// `ai-memory finalize-session --agent pool` (Pool has no true
-    /// session-end event).
-    #[value(alias = "poolside")]
-    Pool,
     /// ZCode (z.ai) — JSON-config lifecycle hooks in the root `hooks` block
     /// of `~/.zcode/cli/config.json` (the same file `install-mcp --client
     /// zcode` registers MCP servers in). Entries are exec-form
@@ -1522,21 +1422,7 @@ impl AgentChoice {
         use ai_memory_core::AgentKind;
         match self {
             Self::ClaudeCode => AgentKind::ClaudeCode,
-            Self::Codex => AgentKind::Codex,
-            Self::Cursor => AgentKind::Cursor,
-            Self::GeminiCli => AgentKind::GeminiCli,
             Self::OpenCode | Self::OpenCode2 => AgentKind::OpenCode,
-            Self::Pi => AgentKind::Pi,
-            Self::Omp => AgentKind::Omp,
-            Self::Openclaw => AgentKind::OpenClaw,
-            Self::AntigravityCli => AgentKind::AntigravityCli,
-            Self::Grok => AgentKind::Grok,
-            Self::Zero => AgentKind::Zero,
-            Self::Devin => AgentKind::Devin,
-            Self::KimiCode => AgentKind::KimiCode,
-            Self::KiroCli | Self::KiroCliV3 => AgentKind::KiroCli,
-            Self::CommandCode => AgentKind::CommandCode,
-            Self::Pool => AgentKind::Pool,
             Self::Zcode => AgentKind::Zcode,
         }
     }
@@ -1549,14 +1435,8 @@ impl AgentChoice {
     #[must_use]
     pub const fn script_hook_subdir(self) -> Option<&'static str> {
         match self {
-            Self::OpenCode
-            | Self::OpenCode2
-            | Self::Pi
-            | Self::Omp
-            | Self::Openclaw
-            | Self::Zero
-            | Self::Zcode => None,
-            _ => Some(self.kind().as_str()),
+            Self::OpenCode | Self::OpenCode2 | Self::Zcode => None,
+            Self::ClaudeCode => Some(self.kind().as_str()),
         }
     }
 }
@@ -1591,8 +1471,8 @@ pub struct FinalizeSessionArgs {
     /// first-party installer. finalize-session is agent-agnostic (it just posts
     /// a synthetic session-end and summarises), so refusing a captured harness
     /// like `hermes` here only stranded its sessions unclosable (#623).
-    /// Defaults to Codex for backward compatibility.
-    #[arg(long, default_value = "codex", value_parser = parse_finalizable_agent)]
+    /// Defaults to Claude Code for backward compatibility.
+    #[arg(long, default_value = "claude-code", value_parser = parse_finalizable_agent)]
     pub agent: ai_memory_core::AgentKind,
     /// Workspace name. Defaults to the nearest `.ai-memory.toml` marker's
     /// `workspace`, else `default`.
@@ -1625,15 +1505,13 @@ pub struct FinalizeSessionArgs {
 }
 
 /// MCP client to render configuration for. Includes both the
-/// hook-capable agents (Claude Code / Codex / OpenCode — same MCP
+/// hook-capable agents (Claude Code / OpenCode / ZCode — same MCP
 /// surface, also covered by `install-hooks`) and the MCP-only
 /// clients researched in docs/mcp-install.md.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum McpClient {
     /// Anthropic Claude Code — `claude mcp add`.
     ClaudeCode,
-    /// OpenAI Codex CLI — `~/.codex/config.toml`.
-    Codex,
     /// OpenCode — `opencode.json`. Accepts `opencode` (no hyphen) as
     /// an alias for symmetry with `AgentChoice` and the on-disk
     /// hook-staging dir name.
@@ -1645,90 +1523,28 @@ pub enum McpClient {
     /// header-credentialed servers via `oauth: false`.
     #[value(name = "opencode2", alias = "opencode-v2", alias = "open-code2")]
     OpenCode2,
-    /// Cursor IDE — `~/.cursor/mcp.json` or `.cursor/mcp.json`.
-    Cursor,
-    /// Anthropic Claude Desktop — uses the `mcp-remote` stdio shim
-    /// to talk to ai-memory's HTTP endpoint (Claude Desktop's JSON
-    /// config does not register HTTP transports directly).
-    ClaudeDesktop,
-    /// Google Gemini CLI — `~/.gemini/settings.json`.
-    GeminiCli,
-    /// OpenClaw personal AI gateway — `~/.openclaw/config.json`.
-    Openclaw,
-    /// Real Pi coding agent. Uses ai-memory's generated bridge extension
-    /// because Pi has no native MCP config.
-    Pi,
-    /// Oh My Pi (`omp`) — `~/.omp/agent/mcp.json`.
-    #[value(alias = "oh-my-pi")]
-    Omp,
-    /// Google Antigravity CLI (`agy`) — `~/.gemini/config/mcp_config.json`.
-    #[value(alias = "antigravity", alias = "agy")]
-    AntigravityCli,
-    /// Zero coding agent (Gitlawb/zero) — `~/.config/zero/config.json`,
-    /// `mcp.servers` map with native HTTP transport + bearer headers.
-    Zero,
     /// ZCode (z.ai) — `~/.zcode/cli/config.json`, nested `mcp.servers`
     /// map with `type: "http"` + `url` + optional `headers`. ZCode's
     /// entry schema is strict: unknown keys make it drop the server
     /// silently, so the generated entry carries nothing else.
     Zcode,
-    /// Devin CLI — `~/.devin/config.json`.
-    Devin,
-    /// xAI Grok Build CLI — `~/.grok/config.toml` under
-    /// `[mcp_servers.<name>]` with native HTTP `url` + `headers`.
-    /// Pair with `install-hooks --agent grok` for lifecycle capture.
-    /// Grok ignores SessionStart stdout, so handoffs are recovered via
-    /// MCP `memory_handoff_accept` rather than hook injection.
-    Grok,
-    /// Kimi Code CLI (Moonshot AI).
-    #[value(alias = "kimi")]
-    KimiCode,
-    /// Kiro CLI - `$KIRO_HOME/settings/mcp.json` (default
-    /// `~/.kiro/settings/mcp.json`). Pair with
-    /// `install-hooks --agent kiro-cli` for verified v2 lifecycle capture.
-    #[value(alias = "kiro")]
-    KiroCli,
-    /// Command Code CLI — `~/.commandcode/mcp.json`.
-    #[value(alias = "commandcode", alias = "cmdc", alias = "cmd")]
-    CommandCode,
-    /// Swival CLI — project-scoped `.swival/mcp.json` using native HTTP.
-    /// This integration is MCP-only; Swival's lifecycle callback does not
-    /// expose a stable session identifier for reliable capture correlation.
-    Swival,
-    /// VS Code GitHub Copilot (agent mode) — per-workspace
-    /// `.vscode/mcp.json`. Copilot's agent mode reads MCP servers
-    /// from VS Code's own MCP framework (top-level `servers` key),
-    /// so the same JSON file works for any MCP-capable VS Code
-    /// extension, not just Copilot. Default scope is the current
-    /// workspace; pass `--config-file ~/path/to/mcp.json` to target
-    /// the user-level config instead.
-    ///
-    /// The hook surface (PreToolUse/PostToolUse/SessionStart) does
-    /// not yet exist in VS Code Copilot — this is MCP-only by
-    /// design. See `install-mcp --client vscode-copilot`.
-    #[value(name = "vscode-copilot", alias = "copilot", alias = "github-copilot")]
-    VsCodeCopilot,
-    /// Zed editor - user-level `settings.json` under the platform config
-    /// directory. Zed reads remote MCP servers from the top-level
-    /// `context_servers` map. This integration is MCP-only because Zed
-    /// does not expose ai-memory-compatible lifecycle hooks.
-    Zed,
-    /// Muse Code (Meta) — `~/.config/muse/settings.json`, servers under a
-    /// top-level snake_case `mcp_servers` map with `transport:
-    /// "streamable_http"` + `url` + `headers`.
-    ///
-    /// Two documented constraints shape the generated entry. The settings
-    /// file must carry `"schema_version": 1` or *every* Muse Code command
-    /// fails at startup with `malformed settings file`, so the writer adds
-    /// the key when it is absent and never rewrites an existing value. And
-    /// `mode` defaults to `required`, which aborts the whole Muse run when
-    /// the server is unreachable; ai-memory augments a session rather than
-    /// gating it, so the entry sets `mode: "optional"` explicitly.
-    ///
-    /// MCP-only: Muse Code's hook surface is documented but its
-    /// `SessionStart` output contract is not, so lifecycle capture and
-    /// managed workstreams are not claimed. See `install-mcp --client muse`.
-    Muse,
+    /// Trae (ByteDance IDE) — `~/.trae/mcp.json` with the standard
+    /// `mcpServers` map (`type: "http"` + `url` + optional `headers`).
+    /// MCP-only: Trae exposes no lifecycle hooks for capture. The CN
+    /// edition and Windows builds keep their config elsewhere
+    /// (`~/.trae-cn/`, `%APPDATA%\Trae CN\User\`); point `--config-file`
+    /// at the real file when those apply.
+    #[value(name = "trae")]
+    Trae,
+    /// WorkBuddy (Tencent work agent) — `~/.workbuddy/mcp.json` with the
+    /// standard `mcpServers` map (`type: "http"` + `url` + optional
+    /// `headers`). MCP-only: the agent is configured through its
+    /// Settings → MCP panel in the official flow, and no lifecycle-hook
+    /// surface exists for capture; memory is read/written through the
+    /// MCP tools. Point `--config-file` at the actual file when your
+    /// install keeps it elsewhere.
+    #[value(name = "workbuddy")]
+    WorkBuddy,
 }
 
 /// Arguments for `commit`.
@@ -2575,30 +2391,6 @@ mod tests {
     }
 
     #[test]
-    fn pi_and_omp_mcp_clients_parse_to_distinct_variants() {
-        for (alias, expected_pi) in [("pi", true), ("omp", false), ("oh-my-pi", false)] {
-            let cli = Cli::try_parse_from([
-                "ai-memory",
-                "install-mcp",
-                "--client",
-                alias,
-                "--server-url",
-                "http://example.test:49374/mcp",
-            ])
-            .unwrap_or_else(|e| panic!("failed to parse install-mcp alias {alias}: {e}"));
-
-            let Command::InstallMcp(args) = cli.command else {
-                panic!("expected install-mcp command for alias {alias}");
-            };
-            assert!(
-                matches!(args.client, McpClient::Pi) == expected_pi,
-                "alias {alias} resolved to unexpected MCP client: {:?}",
-                args.client
-            );
-        }
-    }
-
-    #[test]
     fn write_page_project_is_optional_for_shared_resolution() {
         let cli = Cli::try_parse_from([
             "ai-memory",
@@ -2788,116 +2580,6 @@ mod tests {
     }
 
     #[test]
-    fn pi_and_omp_hook_agents_parse_to_distinct_variants() {
-        for (alias, expected_pi) in [("pi", true), ("omp", false), ("oh-my-pi", false)] {
-            let cli = Cli::try_parse_from([
-                "ai-memory",
-                "install-hooks",
-                "--agent",
-                alias,
-                "--server-url",
-                "http://example.test:49374",
-            ])
-            .unwrap_or_else(|e| panic!("failed to parse install-hooks alias {alias}: {e}"));
-
-            let Command::InstallHooks(args) = cli.command else {
-                panic!("expected install-hooks command for alias {alias}");
-            };
-            assert!(
-                matches!(args.agent, AgentChoice::Pi) == expected_pi,
-                "alias {alias} resolved to unexpected hook agent: {:?}",
-                args.agent
-            );
-        }
-    }
-
-    #[test]
-    fn antigravity_aliases_parse_to_same_variant() {
-        for alias in ["antigravity-cli", "antigravity", "agy"] {
-            let mcp_cli = Cli::try_parse_from([
-                "ai-memory",
-                "install-mcp",
-                "--client",
-                alias,
-                "--server-url",
-                "http://example.test:49374/mcp",
-            ])
-            .unwrap_or_else(|e| panic!("failed to parse install-mcp alias {alias}: {e}"));
-            let Command::InstallMcp(mcp_args) = mcp_cli.command else {
-                panic!("expected install-mcp command for alias {alias}");
-            };
-            assert!(matches!(mcp_args.client, McpClient::AntigravityCli));
-
-            let hook_cli = Cli::try_parse_from([
-                "ai-memory",
-                "install-hooks",
-                "--agent",
-                alias,
-                "--server-url",
-                "http://example.test:49374",
-            ])
-            .unwrap_or_else(|e| panic!("failed to parse install-hooks alias {alias}: {e}"));
-            let Command::InstallHooks(hook_args) = hook_cli.command else {
-                panic!("expected install-hooks command for alias {alias}");
-            };
-            assert!(matches!(hook_args.agent, AgentChoice::AntigravityCli));
-        }
-    }
-
-    #[test]
-    fn grok_hook_agent_parses() {
-        let hook_cli = Cli::try_parse_from([
-            "ai-memory",
-            "install-hooks",
-            "--agent",
-            "grok",
-            "--server-url",
-            "http://example.test:49374",
-        ])
-        .unwrap_or_else(|e| panic!("failed to parse install-hooks --agent grok: {e}"));
-        let Command::InstallHooks(hook_args) = hook_cli.command else {
-            panic!("expected install-hooks command for grok");
-        };
-        assert!(matches!(hook_args.agent, AgentChoice::Grok));
-    }
-
-    #[test]
-    fn grok_mcp_client_parses() {
-        let mcp_cli = Cli::try_parse_from([
-            "ai-memory",
-            "install-mcp",
-            "--client",
-            "grok",
-            "--server-url",
-            "http://example.test:49374",
-        ])
-        .unwrap_or_else(|e| panic!("failed to parse install-mcp --client grok: {e}"));
-        let Command::InstallMcp(mcp_args) = mcp_cli.command else {
-            panic!("expected install-mcp command for grok");
-        };
-        assert!(matches!(mcp_args.client, McpClient::Grok));
-    }
-
-    #[test]
-    fn kiro_mcp_aliases_parse() {
-        for alias in ["kiro-cli", "kiro"] {
-            let cli = Cli::try_parse_from([
-                "ai-memory",
-                "install-mcp",
-                "--client",
-                alias,
-                "--server-url",
-                "https://memory.example/mcp",
-            ])
-            .unwrap_or_else(|e| panic!("failed to parse Kiro MCP alias {alias}: {e}"));
-            let Command::InstallMcp(args) = cli.command else {
-                panic!("expected install-mcp command for Kiro alias {alias}");
-            };
-            assert!(matches!(args.client, McpClient::KiroCli));
-        }
-    }
-
-    #[test]
     fn opencode2_aliases_parse_to_the_beta_variants() {
         for alias in ["opencode2", "opencode-v2", "open-code2"] {
             let cli = Cli::try_parse_from([
@@ -2976,85 +2658,6 @@ mod tests {
     }
 
     #[test]
-    fn devin_hook_agent_parses() {
-        let hook_cli = Cli::try_parse_from([
-            "ai-memory",
-            "install-hooks",
-            "--agent",
-            "devin",
-            "--server-url",
-            "http://example.test:49374",
-        ])
-        .unwrap_or_else(|e| panic!("failed to parse install-hooks --agent devin: {e}"));
-        let Command::InstallHooks(hook_args) = hook_cli.command else {
-            panic!("expected install-hooks command for devin");
-        };
-        assert!(matches!(hook_args.agent, AgentChoice::Devin));
-    }
-
-    #[test]
-    fn kiro_hook_engine_aliases_parse_explicitly() {
-        for alias in ["kiro-cli", "kiro"] {
-            let cli = Cli::try_parse_from([
-                "ai-memory",
-                "install-hooks",
-                "--agent",
-                alias,
-                "--server-url",
-                "http://127.0.0.1:49374",
-            ])
-            .unwrap_or_else(|error| panic!("failed to parse Kiro v2 alias {alias}: {error}"));
-            let Command::InstallHooks(args) = cli.command else {
-                panic!("expected install-hooks for Kiro v2 alias {alias}");
-            };
-            assert_eq!(args.agent, AgentChoice::KiroCli);
-        }
-        for alias in ["kiro-cli-v3", "kiro-v3"] {
-            let cli = Cli::try_parse_from([
-                "ai-memory",
-                "install-hooks",
-                "--agent",
-                alias,
-                "--server-url",
-                "http://127.0.0.1:49374",
-            ])
-            .unwrap_or_else(|error| panic!("failed to parse Kiro v3 alias {alias}: {error}"));
-            let Command::InstallHooks(args) = cli.command else {
-                panic!("expected install-hooks for Kiro v3 alias {alias}");
-            };
-            assert_eq!(args.agent, AgentChoice::KiroCliV3);
-            assert_eq!(args.agent.kind(), ai_memory_core::AgentKind::KiroCli);
-        }
-    }
-
-    #[test]
-    fn pool_hook_and_finalize_aliases_parse() {
-        for alias in ["pool", "poolside"] {
-            let cli = Cli::try_parse_from([
-                "ai-memory",
-                "install-hooks",
-                "--agent",
-                alias,
-                "--server-url",
-                "http://127.0.0.1:49374",
-            ])
-            .unwrap_or_else(|error| panic!("failed to parse Pool alias {alias}: {error}"));
-            let Command::InstallHooks(args) = cli.command else {
-                panic!("expected install-hooks for Pool alias {alias}");
-            };
-            assert_eq!(args.agent, AgentChoice::Pool);
-            assert_eq!(args.agent.kind(), ai_memory_core::AgentKind::Pool);
-            assert_eq!(args.agent.script_hook_subdir(), Some("pool"));
-        }
-        let cli = Cli::try_parse_from(["ai-memory", "finalize-session", "--agent", "pool"])
-            .expect("failed to parse finalize-session --agent pool");
-        let Command::FinalizeSession(args) = cli.command else {
-            panic!("expected finalize-session for pool");
-        };
-        assert_eq!(args.agent, ai_memory_core::AgentKind::Pool);
-    }
-
-    #[test]
     fn zcode_hook_and_finalize_aliases_parse() {
         for alias in ["zcode", "zai"] {
             let cli = Cli::try_parse_from([
@@ -3080,56 +2683,6 @@ mod tests {
             panic!("expected finalize-session for zcode");
         };
         assert_eq!(args.agent, ai_memory_core::AgentKind::Zcode);
-    }
-
-    #[test]
-    fn command_code_mcp_and_hook_aliases_parse() {
-        for alias in ["command-code", "commandcode", "cmdc", "cmd"] {
-            let mcp = Cli::try_parse_from([
-                "ai-memory",
-                "install-mcp",
-                "--client",
-                alias,
-                "--server-url",
-                "http://memory.example:49374",
-            ])
-            .unwrap_or_else(|error| panic!("failed to parse MCP alias {alias}: {error}"));
-            let Command::InstallMcp(args) = mcp.command else {
-                panic!("expected install-mcp for {alias}");
-            };
-            assert_eq!(args.client, McpClient::CommandCode);
-
-            let hooks = Cli::try_parse_from([
-                "ai-memory",
-                "install-hooks",
-                "--agent",
-                alias,
-                "--server-url",
-                "http://memory.example:49374",
-            ])
-            .unwrap_or_else(|error| panic!("failed to parse hook alias {alias}: {error}"));
-            let Command::InstallHooks(args) = hooks.command else {
-                panic!("expected install-hooks for {alias}");
-            };
-            assert_eq!(args.agent, AgentChoice::CommandCode);
-        }
-    }
-
-    #[test]
-    fn swival_mcp_client_parses() {
-        let cli = Cli::try_parse_from([
-            "ai-memory",
-            "install-mcp",
-            "--client",
-            "swival",
-            "--server-url",
-            "http://memory.example:49374",
-        ])
-        .unwrap_or_else(|error| panic!("failed to parse MCP client swival: {error}"));
-        let Command::InstallMcp(args) = cli.command else {
-            panic!("expected install-mcp for swival");
-        };
-        assert_eq!(args.client, McpClient::Swival);
     }
 
     #[test]
@@ -3284,47 +2837,6 @@ mod tests {
             result.is_err(),
             "an unknown hook --project-strategy value must be rejected by value_enum"
         );
-    }
-
-    #[test]
-    fn vscode_copilot_aliases_parse_to_same_variant() {
-        for alias in ["vscode-copilot", "copilot", "github-copilot"] {
-            let cli = Cli::try_parse_from([
-                "ai-memory",
-                "install-mcp",
-                "--client",
-                alias,
-                "--server-url",
-                "http://example.test:49374/mcp",
-            ])
-            .unwrap_or_else(|e| panic!("failed to parse install-mcp alias {alias}: {e}"));
-
-            let Command::InstallMcp(args) = cli.command else {
-                panic!("expected install-mcp command for alias {alias}");
-            };
-            assert!(
-                matches!(args.client, McpClient::VsCodeCopilot),
-                "alias {alias} must resolve to the VS Code Copilot MCP client"
-            );
-        }
-    }
-
-    #[test]
-    fn zed_mcp_client_parses() {
-        let cli = Cli::try_parse_from([
-            "ai-memory",
-            "install-mcp",
-            "--client",
-            "zed",
-            "--server-url",
-            "http://example.test:49374/mcp",
-        ])
-        .unwrap();
-
-        let Command::InstallMcp(args) = cli.command else {
-            panic!("expected install-mcp command");
-        };
-        assert!(matches!(args.client, McpClient::Zed));
     }
 
     #[test]

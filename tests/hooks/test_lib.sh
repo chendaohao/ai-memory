@@ -97,23 +97,6 @@ PAYLOAD_CURSOR_TOOL='{"session_id":"x","cwd":"","hook_event_name":"postToolUse",
 assert_eq "extract cwd falls through cursor empty cwd" "/home/u/cur" \
     "$(ai_memory_extract_cwd "$PAYLOAD_CURSOR_TOOL")"
 
-antigravity_initial() {
-    if ai_memory_antigravity_is_initial_invocation "$1"; then
-        printf 'yes'
-    else
-        printf 'no'
-    fi
-}
-assert_eq "antigravity invocation zero is initial" "yes" \
-    "$(antigravity_initial '{"invocationNum":0,"conversationId":"agy"}')"
-assert_eq "antigravity later invocation is not initial" "no" \
-    "$(antigravity_initial '{"invocationNum":3,"conversationId":"agy"}')"
-assert_eq "antigravity missing invocation fails closed" "no" \
-    "$(antigravity_initial '{"conversationId":"agy"}')"
-assert_eq "antigravity quoted invocation fails closed" "no" \
-    "$(antigravity_initial '{"invocationNum":"0","conversationId":"agy"}')"
-assert_eq "antigravity fractional invocation fails closed" "no" \
-    "$(antigravity_initial '{"invocationNum":0.5,"conversationId":"agy"}')"
 assert_eq "extract antigravity conversation id" "agy" \
     "$(ai_memory_extract_session_id '{"conversationId":"agy"}')"
 

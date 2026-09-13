@@ -6,7 +6,7 @@
 </p>
 
 > Long-term memory for AI coding agents. Quit Claude Code mid-task,
-> start OpenAI Codex in the same directory, continue without
+> start OpenCode in the same directory, continue without
 > re-explaining the architecture, the failed approaches, or the open
 > questions.
 
@@ -17,15 +17,14 @@
 ## Why ai-memory
 
 Your coding agent already has a memory feature. Claude Code takes its own
-notes, Cursor remembers some things, and every platform is adding more. All
+notes, OpenCode remembers some things, and every platform is adding more. All
 of them share the same walls: the notes live on one machine, belong to one
 agent, and vanish from view the moment you switch tools — or teammates.
 
 ai-memory is what's on the other side of those walls.
 
-- **It follows you across agents.** Twenty-plus harnesses — Claude Code,
-  Codex, Cursor, Gemini CLI, OpenCode, Grok, Devin, Kimi, Kiro, and more —
-  feed one shared memory. Quit Claude Code mid-task, open Codex in the same
+- **It follows you across agents.** Claude Code, OpenCode, and ZCode feed
+  one shared memory; Trae and WorkBuddy join through MCP. Quit Claude Code mid-task, open OpenCode in the same
   directory, and the next agent picks up a real handoff: where you left
   off, what failed, what's still open. Handoffs are a protocol here, not a
   convention — typed, owned, claimed exactly once.
@@ -90,31 +89,11 @@ caveats is in [`docs/support-matrix.md`](docs/support-matrix.md).
 | Windows via WSL2 | Supported |
 | Native Windows | Experimental |
 | Claude Code | Supported |
-| Codex | Supported |
-| Command Code | Supported |
-| Devin CLI | Supported |
 | OpenCode | Supported |
 | OpenCode 2 (`opencode2` beta) | Supported |
-| Cursor | Supported |
-| Gemini CLI | Supported |
-| Oh My Pi / OMP | Supported |
-| Pi | Supported |
-| Crush | Managed-only |
-| Managed workstreams | Opt-in |
-| Claude Desktop | MCP-only |
-| OpenClaw | Supported |
-| Antigravity CLI | Supported |
-| Grok Build CLI | Supported |
-| Swival CLI | MCP-only |
-| Zero | Supported |
 | ZCode | Supported |
-| Kimi Code | Supported |
-| Kiro CLI | Supported |
-| Pool | Hooks-only |
-| VS Code Copilot | MCP-only |
-| Zed | MCP-only |
-| Muse Code | MCP-only |
-| Hermes Agent | Community |
+| Trae | MCP-only |
+| WorkBuddy | MCP-only |
 | LLM/auth providers | Supported |
 | Embedding providers | Supported |
 
@@ -203,11 +182,8 @@ docker run -d --name ai-memory \
 
 # 3. Wire your agent CLI in two commands. The wrapper takes care of
 #    mounts and each client's config-path detection. Re-run with
-#    `--agent codex`, `--agent command-code`, `--agent devin`, `--agent opencode`, `--agent opencode2`, `--agent gemini-cli`,
-#    `--agent grok`, `--agent kimi-code`, `--agent kiro-cli`, `--agent omp`,
-#    `--agent oh-my-pi`, `--client cursor`,
-#    `--client gemini-cli`, `--client grok`, `--client kiro-cli`, etc.
-#    for additional agents; full list in docs/install.md.
+#    `--agent opencode`, `--agent opencode2`, or `--client zcode`
+#    for the other supported agents; full list in docs/install.md.
 ai-memory install-mcp   --client claude-code --apply
 ai-memory install-hooks --agent  claude-code --apply
 ```
