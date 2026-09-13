@@ -33,6 +33,8 @@ enum RewriteOp {
     Instructions,
     /// Standard JSON hook table under `hooks`.
     HooksJson,
+    /// ZCode config.json: ai-memory entries under `hooks.events`.
+    ZcodeHooksJson,
     /// MCP JSON config for one client shape.
     McpJson(McpClient),
 }
@@ -134,6 +136,19 @@ fn build_plan(args: &UninstallArgs) -> anyhow::Result<Vec<PlannedChange>> {
                 path,
                 removal.removed_events,
                 RewriteOp::HooksJson,
+            );
+        }
+
+        let zcode_config = install_hooks::zcode_config_path()?;
+        if zcode_config.exists() {
+            let content = std::fs::read_to_string(&zcode_config)
+                .with_context(|| format!("reading {}", zcode_config.display()))?;
+            let removal = strip_zcode_hooks(&content)?;
+            push_rewrite(
+                &mut plan,
+                zcode_config,
+                removal.removed_events,
+                RewriteOp::ZcodeHooksJson,
             );
         }
 
@@ -287,6 +302,7 @@ fn apply_change(change: &PlannedChange, name: Option<&str>, url: &str) -> anyhow
                     out = match *op {
                         RewriteOp::Instructions => strip_instructions_block(&out).0,
                         RewriteOp::HooksJson => strip_ai_memory_hooks(&out)?.new_content,
+                        RewriteOp::ZcodeHooksJson => strip_zcode_hooks(&out)?.new_content,
                         RewriteOp::McpJson(client) => {
                             strip_mcp_json_client(&out, client, name, url)?.0
                         }
@@ -564,6 +580,34 @@ fn strip_ai_memory_hooks(content: &str) -> Result<HookRemoval> {
         strip_hook_events(hooks, &mut removed_events);
         if hooks.is_empty() {
             root.remove("hooks");
+        }
+        Ok(())
+    })?;
+    Ok(HookRemoval {
+        new_content,
+        removed_events,
+    })
+}
+
+/// Remove ai-memory's exec-form entries from ZCode's `hooks.events` map
+/// inside `~/.zcode/cli/config.json`. Ownership is proven per entry by the
+/// native `hook --event` command signature, so third-party entries survive.
+/// The `enabled`/`maxOutputBytes` keys and `mcp.servers` are left alone.
+fn strip_zcode_hooks(content: &str) -> Result<HookRemoval> {
+    let mut removed_events = Vec::new();
+    let new_content = mutate_json(content, |root| {
+        let Some(events) = root
+            .get_mut("hooks")
+            .and_then(|hooks| hooks.get_mut("events"))
+            .and_then(|value| value.as_object_mut())
+        else {
+            return Ok(());
+        };
+        strip_hook_events(events, &mut removed_events);
+        if events.is_empty()
+            && let Some(hooks) = root.get_mut("hooks").and_then(|value| value.as_object_mut())
+        {
+            hooks.remove("events");
         }
         Ok(())
     })?;

@@ -265,7 +265,7 @@ fn only_hooks_preserves_mcp_in_same_file() {
     std::fs::create_dir_all(&zcode).unwrap();
     std::fs::write(
         zcode.join("config.json"),
-        r#"{"hooks":{"SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"AI_MEMORY_HOOK_URL=http://h /x/session-start.sh"}]}]},"mcp":{"servers":{"ai-memory":{"type":"http","url":"http://127.0.0.1:49374/mcp"}}}}"#,
+        r#"{"hooks":{"enabled":true,"events":{"SessionStart":[{"command":"ai-memory","args":["hook","--event","session-start","--agent","zcode","--server-url","http://h:49374"]}]},"PostToolUse":[{"command":"other-tool","args":["observe"]}]},"mcp":{"servers":{"ai-memory":{"type":"http","url":"http://127.0.0.1:49374/mcp"}}}}"#,
     )
     .unwrap();
 
@@ -275,14 +275,15 @@ fn only_hooks_preserves_mcp_in_same_file() {
         .unwrap();
     assert!(status.success());
 
-    let v: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(zcode.join("config.json")).unwrap(),
-    )
-    .unwrap();
-    // Hooks removed...
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(zcode.join("config.json")).unwrap()).unwrap();
+    // Our ZCode hook entry removed, the third-party entry survives...
     assert!(
-        v["hooks"].get("SessionStart").is_none(),
-        "hook should be removed"
+        v["hooks"]["events"].get("SessionStart").is_none(),
+        "our zcode hook should be removed"
+    );
+    assert!(
+        v["hooks"]["events"].get("PostToolUse").is_some(),
+        "third-party zcode hooks must survive"
     );
     // ...but the MCP entry must SURVIVE because --only hooks.
     assert!(
