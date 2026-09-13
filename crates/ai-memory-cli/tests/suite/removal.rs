@@ -258,13 +258,14 @@ fn uninstall_apply_is_idempotent() {
 #[test]
 fn only_hooks_preserves_mcp_in_same_file() {
     let _guard = cli_test_lock();
-    // Gemini-style: hooks + mcpServers in one settings.json.
+    // ZCode-style: the hooks block and the mcp.servers map share one
+    // ~/.zcode/cli/config.json.
     let home = tempfile::tempdir().unwrap();
-    let gem = home.path().join(".gemini");
-    std::fs::create_dir_all(&gem).unwrap();
+    let zcode = home.path().join(".zcode/cli");
+    std::fs::create_dir_all(&zcode).unwrap();
     std::fs::write(
-        gem.join("settings.json"),
-        r#"{"hooks":{"SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"AI_MEMORY_HOOK_URL=http://h /x/session-start.sh"}]}]},"mcpServers":{"ai-memory":{"httpUrl":"http://127.0.0.1:49374/mcp"}}}"#,
+        zcode.join("config.json"),
+        r#"{"hooks":{"SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"AI_MEMORY_HOOK_URL=http://h /x/session-start.sh"}]}]},"mcp":{"servers":{"ai-memory":{"type":"http","url":"http://127.0.0.1:49374/mcp"}}}}"#,
     )
     .unwrap();
 
@@ -274,8 +275,10 @@ fn only_hooks_preserves_mcp_in_same_file() {
         .unwrap();
     assert!(status.success());
 
-    let v: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(gem.join("settings.json")).unwrap()).unwrap();
+    let v: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(zcode.join("config.json")).unwrap(),
+    )
+    .unwrap();
     // Hooks removed...
     assert!(
         v["hooks"].get("SessionStart").is_none(),
@@ -283,8 +286,8 @@ fn only_hooks_preserves_mcp_in_same_file() {
     );
     // ...but the MCP entry must SURVIVE because --only hooks.
     assert!(
-        v["mcpServers"].get("ai-memory").is_some(),
-        "--only hooks must NOT touch mcpServers"
+        v["mcp"]["servers"].get("ai-memory").is_some(),
+        "--only hooks must NOT touch mcp.servers"
     );
 }
 
