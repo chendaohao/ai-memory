@@ -9,29 +9,14 @@ name: nix
 #
 # Deliberately NOT run on every pull request — a full release build under
 # Nix costs far more wall-clock than the rest of the matrix combined, and
-# most PRs cannot affect it. It runs when an input to the Nix build
-# actually changes, on a weekly schedule to catch upstream drift, and on
-# demand.
+# most PRs cannot affect it.
+#
+# In this mirror the weekly schedule and the push/pull-request triggers are
+# off. Dispatch it by hand when a change actually touches an input to the
+# Nix build:
+#
+#   gh workflow run nix.yml
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'flake.nix'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
-      - 'rust-toolchain.toml'
-      - '.github/workflows/nix.yml'
-  pull_request:
-    paths:
-      - 'flake.nix'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
-      - 'rust-toolchain.toml'
-      - '.github/workflows/nix.yml'
-  schedule:
-    # Mondays 05:17 UTC. Off the hour so it does not pile onto the
-    # top-of-hour scheduling spike.
-    - cron: '17 5 * * 1'
   workflow_dispatch:
 
 permissions:

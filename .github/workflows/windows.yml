@@ -30,12 +30,13 @@ name: windows
 # to main: fast Linux CI gates each merge, and the full Windows suite runs
 # nightly, on demand, and MANDATORILY right before a release (dispatch it
 # on the release-candidate SHA and wait for green — see AGENTS.md).
+#
+# In this mirror the nightly schedule and the pull-request trigger are both
+# off, so nothing runs unattended and the `windows` label no longer reaches
+# this workflow. Run it on demand instead:
+#
+#   gh workflow run windows.yml
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, labeled]
-  schedule:
-    # 04:23 UTC daily. Off the hour, and away from nix.yml's Monday slot.
-    - cron: '23 4 * * *'
   workflow_dispatch:
 
 permissions:

@@ -1,12 +1,12 @@
 name: ci
 
+# Automatic triggers (push, pull_request) are disabled in this mirror.
+# This checkout exists to carry local work against upstream; it is not a
+# CI-gated repository, so nothing here should spend Actions minutes on its
+# own. Every job is still reachable by hand — dispatch this workflow from
+# the Actions tab or with `gh workflow run ci.yml` when a change needs
+# validating.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    types: [opened, synchronize, reopened, labeled]
-  # Manual full run (macOS legs included) — dispatch on the
-  # release-candidate SHA right before a release.
   workflow_dispatch:
 
 env:

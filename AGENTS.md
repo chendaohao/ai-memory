@@ -494,6 +494,15 @@ Additional boundary rules:
   release**: dispatch `ci` (macOS legs) and `windows` on the exact
   release-candidate SHA and wait for green before tagging. Never tag a
   release whose SHA lacks a green full matrix.
+  - **This mirror runs nothing automatically.** `push`, `pull_request`,
+    and `schedule` are removed from every workflow in
+    `.github/workflows/`, and Dependabot is off — the repository exists
+    to carry local work against upstream, not to spend Actions minutes on
+    its own. Every job below is still reachable with
+    `gh workflow run <file>`; the labels that used to select legs
+    (`full-ci`, `windows`) no longer do anything, so name the workflow
+    directly. `release.yml` is untouched and still fires on a `v*.*.*`
+    tag.
 - **Every release updates the Homebrew tap — do not forget it.** After
   `release.yml` publishes the GitHub release and its per-target tarballs,
   update `~/Projects/homebrew-tap/Formula/ai-memory.rb`: bump `version` and
